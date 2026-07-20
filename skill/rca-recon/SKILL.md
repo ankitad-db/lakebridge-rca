@@ -40,15 +40,16 @@ user to approve it before running all cells** (see Workflow step 5).
 ## Workflow
 
 ### 1. Set up the engine
-The deterministic engine is the `rca_engine` package in the `lakebridge-rca`
-repo. Ensure it is importable, then run the first pass:
+The deterministic engine (`rca_engine`) is **vendored inside this skill folder**,
+so no package install is needed — just add the skill folder to `sys.path` and
+import it. Do **not** `pip install` from an external URL.
 
 ```python
-try:
-    import rca_engine
-except ImportError:
-    %pip install git+https://github.com/ankitad-db/lakebridge-rca.git
-    dbutils.library.restartPython()
+import os, sys
+SKILL_DIR = os.getcwd()          # the notebook runs from this skill folder
+if SKILL_DIR not in sys.path:
+    sys.path.insert(0, SKILL_DIR)
+import rca_engine                 # resolves to ./rca_engine (vendored)
 ```
 
 ### 2. Run the end-to-end engine (ingest → classify → live drill-down)

@@ -14,10 +14,17 @@ or:
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+# ``rca_engine`` is vendored inside this skill folder (skill/rca-recon/rca_engine),
+# so it imports directly from the workspace — no ``pip install`` from an external URL.
+_SKILL_DIR = Path(__file__).resolve().parent.parent
+if str(_SKILL_DIR) not in sys.path:
+    sys.path.insert(0, str(_SKILL_DIR))
 
 from rca_engine.analyze import analyze
 from rca_engine.report import build_tldr, write_json, write_notebook

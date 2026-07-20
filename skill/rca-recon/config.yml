@@ -13,5 +13,5 @@ dialect: snowflake
 # spark session is used, so this is not required there.
 warehouse_id: 4c79c6902dd2bbc2
 
-# Where to install the deterministic engine if it isn't already importable.
-package_source: git+https://github.com/ankitad-db/lakebridge-rca.git
+# The deterministic engine (rca_engine) is vendored inside this skill folder, so
+# it imports directly from the workspace — no external package install is needed.
