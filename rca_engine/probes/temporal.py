@@ -54,7 +54,23 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
     signals: list[ProbeSignal] = []
     delta = abs((s - t).total_seconds())
 
-    if delta in _COMMON_OFFSETS or (delta % 3600 == 0 and 0 < delta <= 86400):
+    # Date-only values (no time component) that differ by a small whole number of days
+    # point to a date-bucketing/week-start config difference (e.g. DATE_TRUNC('week')
+    # Sunday vs Monday), not a timezone offset.
+    date_only = ":" not in str(source_value) and ":" not in str(target_value)
+    if date_only and delta % 86400 == 0 and 0 < delta <= 6 * 86400:
+        return [
+            ProbeSignal(
+                category=RootCauseCategory.ENV_CONFIG,
+                strength=0.75,
+                detail=f"Date differs by {int(delta // 86400)} whole day(s) with no time "
+                f"component; likely a week-start/date-bucketing config difference "
+                f"(e.g. DATE_TRUNC week start Sunday vs Monday, or session calendar).",
+                meta={"days": int(delta // 86400)},
+            )
+        ]
+
+    if delta in _COMMON_OFFSETS or (delta % 3600 == 0 and 0 < delta < 86400):
         signals.append(
             ProbeSignal(
                 category=RootCauseCategory.TIMEZONE,

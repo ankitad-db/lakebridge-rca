@@ -12,9 +12,20 @@ _NULLISH = {None, "", "null", "NULL", "None", "_null_recon_"}
 _TRUE = {"y", "yes", "t", "true", "1", 1, True}
 _FALSE = {"n", "no", "f", "false", "0", 0, False}
 
+# Placeholder values a migration often substitutes for NULL (a migration encoding
+# choice, not a genuine data gap). Compared case-insensitively as strings.
+_SENTINELS = {
+    "-1", "-9999", "9999", "n/a", "na", "unknown", "none", "null", "?", "tbd",
+    "0000-00-00", "1900-01-01", "1970-01-01",
+}
+
 
 def _is_nullish(v: Any) -> bool:
     return v in _NULLISH
+
+
+def _is_sentinel(v: Any) -> bool:
+    return v is not None and str(v).strip().lower() in _SENTINELS
 
 
 def _bool_token(v: Any) -> bool | None:
@@ -44,8 +55,23 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
             )
         return signals
 
-    # Exactly one side NULL/empty, the other has a real value -> likely a source data gap.
+    # Exactly one side NULL/empty, the other has a real value.
     if s_null != t_null:
+        populated_val = target_value if s_null else source_value
+        # NULL vs a placeholder/sentinel (-1, 'N/A', ...) is a migration NULL-encoding
+        # choice, not a genuine data gap -> null_boolean (fix the load), not upstream.
+        if _is_sentinel(populated_val):
+            side = "target" if s_null else "source"
+            signals.append(
+                ProbeSignal(
+                    category=RootCauseCategory.NULL_BOOLEAN,
+                    strength=0.85,
+                    detail=f"NULL on one side vs sentinel {populated_val!r} on the {side}; a "
+                    f"NULL-encoding/placeholder difference (map the sentinel to NULL on load).",
+                    meta={"sentinel": str(populated_val)},
+                )
+            )
+            return signals
         populated = "target" if s_null else "source"
         signals.append(
             ProbeSignal(

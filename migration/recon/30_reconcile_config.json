@@ -5,7 +5,18 @@
     { "source_name": "dim_store", "target_name": "dim_store", "join_columns": ["store_id"] },
     { "source_name": "fact_orders", "target_name": "fact_orders", "join_columns": ["order_id"] },
     { "source_name": "fact_order_items", "target_name": "fact_order_items", "join_columns": ["order_item_id"] },
-    { "source_name": "agg_daily_sales", "target_name": "agg_daily_sales", "join_columns": ["store_id", "sales_date"] }
+    { "source_name": "agg_daily_sales", "target_name": "agg_daily_sales", "join_columns": ["store_id", "sales_date"] },
+
+    { "source_name": "edge_numeric", "target_name": "edge_numeric", "join_columns": ["rid"] },
+    { "source_name": "edge_events", "target_name": "edge_events", "join_columns": ["eid"] },
+    { "source_name": "edge_geo", "target_name": "edge_geo", "join_columns": ["geo_id"] },
+    { "source_name": "edge_string", "target_name": "edge_string", "join_columns": ["sid"] },
+    { "source_name": "dim_supplier", "target_name": "dim_supplier", "join_columns": ["supplier_id"] },
+    { "source_name": "dim_config", "target_name": "dim_config", "join_columns": ["config_id"] },
+    { "source_name": "fact_inventory", "target_name": "fact_inventory", "join_columns": ["item_id"] },
+    { "source_name": "dim_flag", "target_name": "dim_flag", "join_columns": ["flag_id"] },
+    { "source_name": "fact_payments", "target_name": "fact_payments", "join_columns": ["payment_id"] },
+    { "source_name": "agg_weekly_sales", "target_name": "agg_weekly_sales", "join_columns": ["store_id", "week_id"] }
   ],
   "version": 2
 }

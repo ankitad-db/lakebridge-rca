@@ -1,0 +1,249 @@
+# Machine-readable ground-truth oracle for the migration RCA test bed.
+#
+# Each scenario is a deliberately injected (or intentionally clean) difference
+# between the simulated source (`mig_source_sim`) and the migrated target
+# (`mig_target`). The RCA is validated by checking it produces the expected
+# `category` and `verdict` for each. Consumed by tests/validate_scenarios.py
+# (integration) and mirrored by tests/test_scenarios_unit.py (deterministic).
+#
+# Fields:
+#   id            stable scenario id
+#   table         target table (short name)
+#   column        target column (omit for row-level / schema scenarios)
+#   recon_type    column_mismatch | missing_in_target | missing_in_source | schema
+#   category      expected RootCauseCategory
+#   verdict       expected Verdict (after live drill-down)
+#   deployed      true if a physical table backs it (integration-testable)
+#   example       {source, target} value pair for the deterministic unit test
+#   mechanism     how the difference was injected
+
+scenarios:
+  # ---- core retail scenarios (schemas: mig_source_sim -> mig_target) --------
+  - id: S1
+    table: fact_order_items
+    column: amount
+    recon_type: column_mismatch
+    category: type_precision
+    verdict: migration_induced
+    deployed: true
+    example: {source: "12.3456", target: "12.35"}
+    mechanism: source DECIMAL(18,4) migrated as DECIMAL(18,2) -> scale loss
+
+  - id: S2
+    table: fact_orders
+    column: order_ts
+    recon_type: column_mismatch
+    category: timezone
+    verdict: migration_induced
+    deployed: true
+    example: {source: "2026-01-01 00:00:00", target: "2026-01-01 05:30:00"}
+    mechanism: target = source + 5:30, no UTC normalization (TIMESTAMP_LTZ)
+
+  - id: S3
+    table: dim_customer
+    column: attributes
+    recon_type: column_mismatch
+    category: semi_structured
+    verdict: benign
+    deployed: true
+    example: {source: '{"segment":"A","channel":"web"}', target: '{"channel":"web","segment":"A"}'}
+    mechanism: JSON keys reordered; semantically equal
+
+  - id: S4
+    table: dim_product
+    column: sku
+    recon_type: column_mismatch
+    category: string_format
+    verdict: migration_induced
+    deployed: true
+    example: {source: "SKU-0001", target: "sku-0001  "}
+    mechanism: target lower-cased + trailing whitespace
+
+  - id: S5
+    table: agg_daily_sales
+    column: revenue
+    recon_type: column_mismatch
+    category: transpilation
+    verdict: migration_induced
+    deployed: true
+    example: {source: "1234.50", target: "1235.00"}
+    mechanism: ROUND(sum,0) vs source DECIMAL(18,2) sum (rounding-mode diff)
+
+  - id: S6
+    table: fact_orders
+    recon_type: missing_in_target
+    category: volume_missing
+    verdict: migration_induced
+    deployed: true
+    mechanism: watermark drops order_id > 480 (20 late rows)
+
+  - id: S7
+    table: fact_order_items
+    recon_type: missing_in_source
+    category: volume_extra
+    verdict: migration_induced
+    deployed: true
+    mechanism: fan-out duplicates for order_id <= 5 (15 extra rows)
+
+  - id: S8
+    table: dim_customer
+    column: marketing_segment
+    recon_type: column_mismatch
+    category: upstream_drift
+    verdict: genuine_data
+    deployed: true
+    mechanism: source updated after extract; target holds STALE for every 25th customer
+
+  - id: S9a
+    table: dim_customer
+    column: is_active
+    recon_type: column_mismatch
+    category: null_boolean
+    verdict: migration_induced
+    deployed: true
+    example: {source: "Y", target: "true"}
+    mechanism: Y/N -> true/false boolean encoding
+
+  - id: S9b
+    table: dim_customer
+    column: email
+    recon_type: column_mismatch
+    category: null_boolean
+    verdict: migration_induced
+    deployed: true
+    example: {source: null, target: ""}
+    mechanism: NULL email -> empty string
+
+  - id: S10
+    table: dim_customer
+    column: loyalty_tier
+    recon_type: column_mismatch
+    category: upstream_drift
+    verdict: needs_review
+    deployed: true
+    mechanism: source NULL (never populated); target fabricated -> generated column, needs human decision
+
+  # ---- edge-case scenarios (schema: mig_edge_source -> mig_edge_target) -----
+  - id: E1
+    table: edge_numeric
+    column: v_double
+    recon_type: column_mismatch
+    category: type_precision
+    verdict: migration_induced
+    deployed: true
+    example: {source: "0.100000", target: "0.10000000000000001"}
+    mechanism: source DECIMAL(18,6) migrated to DOUBLE -> binary float representation error
+
+  - id: E2
+    table: edge_numeric
+    column: big_id
+    recon_type: column_mismatch
+    category: type_precision
+    verdict: migration_induced
+    deployed: true
+    example: {source: "3000000000", target: "-1294967296"}
+    mechanism: source NUMBER(38,0) cast to INT -> integer overflow / wrap
+
+  - id: E3
+    table: edge_events
+    column: event_ts
+    recon_type: column_mismatch
+    category: timezone
+    verdict: needs_review
+    deployed: true
+    mechanism: offset varies by row (not constant) -> cannot be a single tz normalization; needs review
+
+  - id: E4
+    table: edge_geo
+    recon_type: schema
+    category: type_precision
+    verdict: migration_induced
+    deployed: true
+    mechanism: column renamed + type widened (DECIMAL(9,6)->DOUBLE) + nullability change
+
+  - id: E5
+    table: agg_weekly_sales
+    column: week_start
+    recon_type: column_mismatch
+    category: env_config
+    verdict: migration_induced
+    deployed: true
+    example: {source: "2026-01-05", target: "2026-01-04"}
+    mechanism: week-start config differs (Monday vs Sunday) between source and Spark
+
+  - id: E6
+    table: dim_supplier
+    column: contact_email
+    recon_type: column_mismatch
+    category: upstream_drift
+    verdict: genuine_data
+    deployed: true
+    example: {source: "s10@vendor.com", target: null}
+    mechanism: target NULL where source populated (dropped/late upstream) -> route to data owner
+
+  - id: E7
+    table: dim_config
+    column: settings_json
+    recon_type: column_mismatch
+    category: semi_structured
+    verdict: needs_review
+    deployed: true
+    example: {source: '{"retries":3}', target: '{"retries":5}'}
+    mechanism: JSON value genuinely different (not a reorder) -> not benign
+
+  - id: E8
+    table: fact_inventory
+    column: reorder_level
+    recon_type: column_mismatch
+    category: null_boolean
+    verdict: migration_induced
+    deployed: true
+    example: {source: null, target: "-1"}
+    mechanism: NULL replaced by sentinel -1 in target
+
+  - id: E9
+    table: dim_flag
+    column: active_flag
+    recon_type: column_mismatch
+    category: null_boolean
+    verdict: migration_induced
+    deployed: true
+    example: {source: "1", target: "true"}
+    mechanism: 1/0 integer flag -> true/false boolean
+
+  - id: E10
+    table: fact_payments
+    recon_type: missing_in_source
+    category: volume_extra
+    verdict: migration_induced
+    deployed: true
+    mechanism: non-idempotent merge re-ran -> duplicate payment rows in target
+
+  - id: E11
+    table: edge_string
+    column: name_ws
+    recon_type: column_mismatch
+    category: string_format
+    verdict: migration_induced
+    deployed: true
+    example: {source: "Acme", target: "Acme   "}
+    mechanism: trailing whitespace only
+
+  - id: E12
+    table: edge_string
+    column: name_unicode
+    recon_type: column_mismatch
+    category: string_format
+    verdict: migration_induced
+    deployed: true
+    # example built programmatically in the unit test (NFC vs NFD of the same text)
+    mechanism: Unicode NFC vs NFD normalization (visually identical; normalize on load)
+
+  # ---- clean baseline (no differences expected) ----------------------------
+  - id: C1
+    table: dim_store
+    recon_type: none
+    category: none
+    verdict: none
+    deployed: true
+    mechanism: clean 1:1 copy; must produce zero findings (100% match)

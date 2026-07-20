@@ -37,6 +37,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                 strength=0.9,
                 detail="JSON/VARIANT payloads are semantically equal but serialized "
                 "differently (key ordering or whitespace); representation-only difference.",
+                meta={"semantically_equal": True},
             )
         ]
 
@@ -48,7 +49,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                 category=RootCauseCategory.SEMI_STRUCTURED,
                 strength=0.6,
                 detail=f"JSON/VARIANT documents share keys but differ in values for {changed}.",
-                meta={"changed_keys": changed},
+                meta={"changed_keys": changed, "semantically_equal": False},
             )
         ]
     return []

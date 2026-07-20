@@ -37,6 +37,25 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
     rel = (diff / denom) if denom != 0 else Decimal(0)
     precision_fired = False
 
+    # Integer overflow: target equals the source wrapped to a 32/64-bit signed int
+    # (e.g. a source NUMBER(38,0)/BIGINT migrated to INT). A precise, high-confidence
+    # signal — the target is a deterministic wrap of the source, not a rounding.
+    if s == s.to_integral_value() and t == t.to_integral_value() and s != t:
+        si = int(s)
+        for bits in (32, 64):
+            mod = 1 << bits
+            if (((si + (mod >> 1)) % mod) - (mod >> 1)) == int(t):
+                signals.append(
+                    ProbeSignal(
+                        category=RootCauseCategory.TYPE_PRECISION,
+                        strength=0.92,
+                        detail=f"Target equals source wrapped to a {bits}-bit signed integer; "
+                        f"integer overflow (source NUMBER/BIGINT migrated to a narrower INT).",
+                        meta={"source": str(s), "target": str(t), "bits": bits},
+                    )
+                )
+                return signals
+
     # Equal after rounding to the smaller scale -> precision/scale loss (e.g. DECIMAL->DOUBLE).
     min_scale = min(_scale(s), _scale(t))
     try:
