@@ -1,0 +1,17 @@
+# Configuration for the rca-recon skill. The user supplies only the recon_id;
+# everything else is read from here.
+
+# Where Lakebridge reconcile writes its output tables (main/metrics/details).
+recon_catalog: fevm_ps_dr_us_east_2_catalog
+recon_schema: reconcile
+
+# The ORIGINAL source EDW dialect, used to pick the semantic knowledge base
+# (type mappings, function differences, remediation). e.g. snowflake, oracle, mssql.
+dialect: snowflake
+
+# Optional: SQL warehouse for local/CLI runs. Inside Genie Code the notebook's
+# spark session is used, so this is not required there.
+warehouse_id: 4c79c6902dd2bbc2
+
+# Where to install the deterministic engine if it isn't already importable.
+package_source: git+https://github.com/ankitad-db/lakebridge-rca.git
