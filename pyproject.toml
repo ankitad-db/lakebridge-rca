@@ -18,6 +18,11 @@ dependencies = [
 databricks = [
     "databricks-sql-connector>=3.0.0",
 ]
+# Code-aware RCA: parse Lakebridge transpile output for per-column transforms.
+# Optional — the engine degrades to data-driven RCA if sqlglot is absent.
+code = [
+    "sqlglot>=25.0",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",

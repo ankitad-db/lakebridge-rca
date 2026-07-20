@@ -12,11 +12,18 @@ description: >-
 
 # Lakebridge Reconciliation RCA
 
-Turn a Lakebridge `reconcile` result into a finished root-cause analysis. You run
-**live** inside the workspace: generate a notebook, execute drill-down queries,
-refine hypotheses, and keep going until every finding has a confident verdict or
-is explicitly flagged **needs review**. After the notebook is generated, **ask the
-user to approve it before running all cells** (see Workflow step 5).
+**RCA is the step *after* Lakebridge `transpile` + `reconcile`.** The Lakebridge flow
+is: analyze → **transpile** (convert source SQL → Databricks) → **reconcile** (compare
+source vs. target) → **RCA (this skill)**. Turn a Lakebridge `reconcile` result into a
+finished root-cause analysis. You run **live** inside the workspace: generate a
+notebook, execute drill-down queries, refine hypotheses, and keep going until every
+finding has a confident verdict or is explicitly flagged **needs review**. After the
+notebook is generated, **ask the user to approve it before running all cells** (see
+Workflow step 5).
+
+When the upstream Lakebridge artifacts are available, RCA is **code-aware**: it reads
+the transpile output and recon config to confirm a mismatch's cause from the actual
+translated code (not just from the data). See the optional inputs below.
 
 ## Input contract
 
@@ -30,6 +37,15 @@ user to approve it before running all cells** (see Workflow step 5).
 - **From `config.yml` (this skill folder):** `recon_catalog`, `recon_schema`,
   `dialect` (the original source EDW dialect, e.g. `snowflake`), `output_dir`, and an
   optional `warehouse_id`. Read it with a small YAML load; do not ask for these.
+- **Optional (code-aware RCA) — Lakebridge artifacts, from `config.yml`:**
+  `recon_config_path` (reconcile config JSON → exact join keys, column mapping,
+  filters), `transpiled_output_dir` (folder from `lakebridge transpile --output-folder`
+  → per-column transforms), and `transpile_error_file` (from `transpile
+  --error-file-path` → Lakebridge's own flagged/failed translations). When present, the
+  engine confirms causes from the translated code (e.g. a `MAKE_INTERVAL` in the target
+  column proves a tz shift; a `WHERE order_id <= 480` filter proves a watermark).
+  Requires `sqlglot` (`pip install sqlglot`); if absent, RCA degrades gracefully to
+  data-driven mode. Omit all three for a pure data-driven run.
 
 ## Verdict taxonomy (this is the field the human acts on)
 

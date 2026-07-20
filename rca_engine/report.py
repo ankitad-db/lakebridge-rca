@@ -274,9 +274,11 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
         ]
         if h.remediation:
             header.append(f"- **Fix**: {h.remediation.strip()}")
+        _ev_label = {"drilldown": "Evidence (query)", "code": "Evidence (code)",
+                     "transpile": "Transpile report"}
         for e in h.evidence:
-            if e.label == "drilldown":
-                header.append(f"- **Evidence**: {e.detail}")
+            if e.label in _ev_label:
+                header.append(f"- **{_ev_label[e.label]}**: {e.detail}")
 
     samples = [
         f"  - `{ {k: v for k, v in list(s.keys.items())[:3]} }` "

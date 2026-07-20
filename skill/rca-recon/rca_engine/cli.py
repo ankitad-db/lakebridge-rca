@@ -41,15 +41,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--warehouse-id", default=None)
     parser.add_argument("--no-drilldown", action="store_true",
                         help="Skip live confirmation queries (deterministic pass only).")
+    parser.add_argument("--recon-config", default=None,
+                        help="Lakebridge reconcile config JSON (join keys, column mapping, filters).")
+    parser.add_argument("--transpiled-output", default=None,
+                        help="Folder/file of transpiled Databricks SQL (for code-level RCA).")
+    parser.add_argument("--transpile-errors", default=None,
+                        help="Lakebridge transpile error file (--error-file-path output).")
     args = parser.parse_args(argv)
 
     runner = _build_runner(args.profile, args.warehouse_id)
 
     from rca_engine.analyze import analyze
 
+    mapping = None
+    if args.recon_config or args.transpiled_output or args.transpile_errors:
+        from rca_engine.lakebridge import build_mapping
+        mapping = build_mapping(args.recon_config, args.transpiled_output, args.transpile_errors)
+
     result = analyze(
         runner, args.recon_id, args.recon_catalog, args.recon_schema,
-        dialect=args.dialect, drilldown=not args.no_drilldown,
+        dialect=args.dialect, drilldown=not args.no_drilldown, mapping=mapping,
     )
 
     parent = os.path.dirname(args.output_path)

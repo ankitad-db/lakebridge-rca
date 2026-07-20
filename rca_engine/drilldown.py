@@ -216,7 +216,13 @@ def run_drilldown(findings: list[Finding], runner: QueryRunner) -> list[Finding]
             if ev.data and ev.data.get("confirmed"):
                 top.confidence = round(min(0.98, max(top.confidence, 0.6) + 0.15), 2)
                 if top.verdict == Verdict.NEEDS_REVIEW:
-                    top.verdict = Verdict.GENUINE_DATA if top.category in (
-                        RootCauseCategory.UPSTREAM_DRIFT,
-                    ) else Verdict.MIGRATION_INDUCED
+                    # If the transpiled code shows the target column is *generated* (not
+                    # carried from source), don't promote to "genuine data" — the target
+                    # fabricates the value, so a human must decide (audit column vs defect).
+                    if f.metadata.get("code_generated"):
+                        pass  # keep NEEDS_REVIEW; code-correlation already explained why
+                    elif top.category in (RootCauseCategory.UPSTREAM_DRIFT,):
+                        top.verdict = Verdict.GENUINE_DATA
+                    else:
+                        top.verdict = Verdict.MIGRATION_INDUCED
     return findings

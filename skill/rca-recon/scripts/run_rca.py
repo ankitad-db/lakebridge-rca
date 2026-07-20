@@ -71,10 +71,20 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None):
     out_dir = _resolve_out_dir(out_dir or cfg.get("output_dir") or "rca_notebooks", spark)
     os.makedirs(out_dir, exist_ok=True)
 
+    # Optionally load Lakebridge transpile + recon-config artifacts for code-aware RCA.
+    mapping = None
+    if cfg.get("recon_config_path") or cfg.get("transpiled_output_dir") or cfg.get("transpile_error_file"):
+        from rca_engine.lakebridge import build_mapping
+        mapping = build_mapping(
+            cfg.get("recon_config_path"),
+            cfg.get("transpiled_output_dir"),
+            cfg.get("transpile_error_file"),
+        )
+
     runner = SparkQueryRunner(spark)
     result = analyze(
         runner, recon_id, cfg["recon_catalog"], cfg["recon_schema"],
-        dialect=cfg.get("dialect", "snowflake"), drilldown=True,
+        dialect=cfg.get("dialect", "snowflake"), drilldown=True, mapping=mapping,
     )
 
     base = os.path.join(out_dir, f"rca_{recon_id}")

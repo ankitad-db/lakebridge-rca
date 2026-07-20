@@ -25,3 +25,12 @@ output_dir: rca_notebooks
 
 # The deterministic engine (rca_engine) is vendored inside this skill folder, so
 # it imports directly from the workspace — no external package install is needed.
+
+# Optional: Lakebridge workflow artifacts for CODE-AWARE RCA (confirms cause from
+# the transpiled code, not just data). All optional; omit for pure data-driven RCA.
+#   recon_config_path:     Lakebridge reconcile config JSON (join keys, mappings, filters)
+#   transpiled_output_dir: folder of transpiled Databricks SQL (lakebridge transpile --output-folder)
+#   transpile_error_file:  Lakebridge transpile error report (transpile --error-file-path)
+# recon_config_path: /Workspace/Users/<you>/lakebridge/recon_config.json
+# transpiled_output_dir: /Workspace/Users/<you>/lakebridge/transpiled
+# transpile_error_file: /Workspace/Users/<you>/lakebridge/transpile_errors.log
