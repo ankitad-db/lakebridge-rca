@@ -13,5 +13,12 @@ dialect: snowflake
 # spark session is used, so this is not required there.
 warehouse_id: 4c79c6902dd2bbc2
 
+# Where to write the generated RCA notebook + JSON. The user can override this per
+# run (just tell the skill where to save). Examples:
+#   /tmp                              (driver-local, default)
+#   /Volumes/<catalog>/<schema>/<vol> (Unity Catalog volume, durable)
+#   /Workspace/Users/<you>/rca        (workspace files)
+output_dir: /tmp
+
 # The deterministic engine (rca_engine) is vendored inside this skill folder, so
 # it imports directly from the workspace — no external package install is needed.

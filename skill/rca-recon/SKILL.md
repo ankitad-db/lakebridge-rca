@@ -21,9 +21,13 @@ user to approve it before running all cells** (see Workflow step 5).
 ## Input contract
 
 - **Required (from the user):** `recon_id` — the Lakebridge reconcile run id.
+- **Optional (from the user):** where to save the RCA notebook. If the user gives a
+  location (a UC Volume like `/Volumes/cat/sch/vol`, a workspace path, or any dir),
+  use it; otherwise fall back to `output_dir` in `config.yml` (default `/tmp`). It is
+  fine to ask "Where should I save the RCA notebook?" if the user hasn't said.
 - **From `config.yml` (this skill folder):** `recon_catalog`, `recon_schema`,
-  `dialect` (the original source EDW dialect, e.g. `snowflake`), and an optional
-  `warehouse_id`. Read it with a small YAML load; do not ask the user for these.
+  `dialect` (the original source EDW dialect, e.g. `snowflake`), `output_dir`, and an
+  optional `warehouse_id`. Read it with a small YAML load; do not ask for these.
 
 ## Verdict taxonomy (this is the field the human acts on)
 
@@ -64,8 +68,11 @@ from rca_engine.runners import SparkQueryRunner
 from rca_engine.analyze import analyze
 from rca_engine.report import build_tldr, write_json, write_notebook
 
+import os
 cfg = yaml.safe_load(open("config.yml"))            # relative to this skill folder
 recon_id = "<RECON_ID_FROM_USER>"
+out_dir = "<USER_LOCATION_OR_NONE>" or cfg.get("output_dir", "/tmp")
+os.makedirs(out_dir, exist_ok=True)
 
 result = analyze(
     SparkQueryRunner(spark), recon_id,
@@ -73,8 +80,11 @@ result = analyze(
     dialect=cfg.get("dialect", "snowflake"), drilldown=True,
 )
 print(build_tldr(result))
-write_notebook(result, f"/tmp/rca_{recon_id}.ipynb")   # readable, symbol-coded report
+write_notebook(result, os.path.join(out_dir, f"rca_{recon_id}.ipynb"))  # symbol-coded report
 ```
+
+`scripts/run_rca.py` also accepts the location: `run(recon_id, spark, out_dir=...)`
+(priority: explicit arg > `config.output_dir` > `/tmp`).
 
 `scripts/run_rca.py` wraps exactly this. See `references/taxonomy.md` for how
 probes map to categories.
@@ -104,7 +114,8 @@ Update each finding's verdict/confidence with what the query shows. Iterate unti
 resolved. Do **not** stop if anything is unresolved.
 
 ### 4. Produce the RCA notebook + conclusion
-- `write_notebook(result, "/tmp/rca_<recon_id>.ipynb")` emits a symbol-coded report:
+- `write_notebook(result, os.path.join(out_dir, f"rca_{recon_id}.ipynb"))` emits a
+  symbol-coded report to the user-chosen `out_dir`:
   a **TL;DR** table (counts by verdict) at the top, one section per finding
   (category/confidence/owner, root cause, fix, the confirming query + its evidence,
   sample diffs), and a closing **🧾 Conclusion & recommended actions** section
@@ -115,10 +126,10 @@ resolved. Do **not** stop if anything is unresolved.
 
 ### 5. Confirm with the user, then run all cells
 - After writing the notebook, **pause and ask the user for approval** before
-  executing it. Show the TL;DR and the notebook path, then ask explicitly, e.g.:
-  _"The RCA notebook is generated at `/tmp/rca_<recon_id>.ipynb`. Are the findings
-  and proposed fixes acceptable? Reply **yes** to run all cells, or tell me what to
-  adjust."_
+  executing it. Show the TL;DR and the actual saved path, then ask explicitly, e.g.:
+  _"The RCA notebook is generated at `<out_dir>/rca_<recon_id>.ipynb`. Are the
+  findings and proposed fixes acceptable? Reply **yes** to run all cells, or tell me
+  what to adjust."_
 - **Do not run the notebook until the user confirms.** If they request changes
   (reclassify a finding, add a drill-down, tweak a fix/owner), apply them, regenerate
   the notebook, and ask again.

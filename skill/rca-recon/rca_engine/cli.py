@@ -8,6 +8,7 @@ Code after this produces its starting point.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from rca_engine.report import build_tldr, write_json, write_notebook
@@ -34,7 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recon-catalog", required=True)
     parser.add_argument("--recon-schema", required=True)
     parser.add_argument("--dialect", default="snowflake")
-    parser.add_argument("--output-path", default="rca_output")
+    parser.add_argument("--output-path", default="rca_output",
+                        help="Base path for the generated .json/.ipynb (dirs are created).")
     parser.add_argument("--profile", default=None)
     parser.add_argument("--warehouse-id", default=None)
     parser.add_argument("--no-drilldown", action="store_true",
@@ -50,9 +52,13 @@ def main(argv: list[str] | None = None) -> int:
         dialect=args.dialect, drilldown=not args.no_drilldown,
     )
 
+    parent = os.path.dirname(args.output_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     write_json(result, f"{args.output_path}.json")
     write_notebook(result, f"{args.output_path}.ipynb")
     print(build_tldr(result))
+    print(f"\nArtifacts: {args.output_path}.json  {args.output_path}.ipynb")
     return 0
 
 
