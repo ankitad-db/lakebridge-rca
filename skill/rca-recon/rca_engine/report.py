@@ -104,6 +104,36 @@ def build_overview(result: RcaResult) -> str:
     return "\n".join(lines)
 
 
+def build_matchrates(result: RcaResult) -> str:
+    """Overall row-level and column-level match rates for every table pair
+    (not just the ones with issues) — a reconciliation scorecard."""
+
+    if not result.table_summaries:
+        return ""
+    lines = ["## 📈 Match rates (row & column level)", "",
+             "Reconciliation health per table pair. **Row match %** = source rows that "
+             "exist in target *and* match on all columns.", "",
+             "| Target table | Source rows | Target rows | ➖ Missing | ➕ Extra | "
+             "Mismatched rows | ✅ Row match % |",
+             "| :-- | --: | --: | --: | --: | --: | --: |"]
+    for s in sorted(result.table_summaries, key=lambda x: x.row_match_pct):
+        name = s.target_table.split(".")[-1]
+        lines.append(
+            f"| `{name}` | {s.source_count:,} | {s.target_count:,} | {s.missing_in_target:,} | "
+            f"{s.missing_in_source:,} | {s.absolute_mismatch:,} | **{s.row_match_pct:.2f}%** |"
+        )
+
+    cols = [f for f in result.findings if f.recon_type == ReconType.COLUMN_MISMATCH and (f.total_count or 0) > 0]
+    if cols:
+        lines += ["", "**Column-level match %** _(columns not listed matched 100%)_:", "",
+                  "| Table.Column | Rows | Mismatches | ✅ Match % |",
+                  "| :-- | --: | --: | --: |"]
+        for f in sorted(cols, key=lambda x: x.mismatch_count / (x.total_count or 1), reverse=True):
+            pct = 100.0 * (f.total_count - f.mismatch_count) / f.total_count
+            lines.append(f"| `{_loc(f)}` | {f.total_count:,} | {f.mismatch_count:,} | {pct:.2f}% |")
+    return "\n".join(lines)
+
+
 def build_tldr(result: RcaResult) -> str:
     counts = result.verdict_counts()
     n_tables = len({f.target_table for f in result.findings})
@@ -122,6 +152,10 @@ def build_tldr(result: RcaResult) -> str:
     lines.append("")
     lines.append(build_overview(result))
     lines.append("")
+    mr = build_matchrates(result)
+    if mr:
+        lines.append(mr)
+        lines.append("")
 
     by_verdict: dict[Verdict, list[Finding]] = {v: [] for v in _VERDICT_ORDER}
     for f in result.findings:
@@ -273,13 +307,97 @@ _RECON_ORDER = {
 }
 
 
+_VALIDATION_HELPERS = '''\
+# 📅 Date-range validation — set the window (widgets), then re-run these cells.
+# Row match % and per-column match % over an optional date range so you can
+# validate a slice of the migration (e.g. one month) rather than the whole table.
+dbutils.widgets.text("start_date", "2000-01-01")
+dbutils.widgets.text("end_date", "2100-01-01")
+START, END = dbutils.widgets.get("start_date"), dbutils.widgets.get("end_date")
+
+def _win(date_col):
+    return f"WHERE `{date_col}` BETWEEN '{START}' AND '{END}'" if date_col else ""
+
+def validate_rows(src, tgt, keys, date_col=None):
+    name = tgt.split(".")[-1]
+    if not keys:  # no join key learned — report counts only (edit keys to enable match)
+        return spark.sql(f"""
+            SELECT '{name}' AS table,
+                   (SELECT count(*) FROM {src} {_win(date_col)}) AS source_rows,
+                   (SELECT count(*) FROM {tgt} {_win(date_col)}) AS target_rows,
+                   CAST(NULL AS BIGINT) AS matched_keys,
+                   CAST(NULL AS DOUBLE) AS row_match_pct
+        """)
+    on = " AND ".join(f"s.`{k}` = t.`{k}`" for k in keys)
+    return spark.sql(f"""
+        WITH s AS (SELECT * FROM {src} {_win(date_col)}),
+             t AS (SELECT * FROM {tgt} {_win(date_col)})
+        SELECT '{name}' AS table,
+               (SELECT count(*) FROM s) AS source_rows,
+               (SELECT count(*) FROM t) AS target_rows,
+               (SELECT count(*) FROM s JOIN t ON {on}) AS matched_keys,
+               round(100.0 * (SELECT count(*) FROM s JOIN t ON {on}) /
+                     nullif((SELECT count(*) FROM s), 0), 2) AS row_match_pct
+    """)
+
+def validate_column(src, tgt, keys, col, date_col=None):
+    on = " AND ".join(f"s.`{k}` = t.`{k}`" for k in keys) if keys else "TRUE"
+    return spark.sql(f"""
+        WITH s AS (SELECT * FROM {src} {_win(date_col)}),
+             t AS (SELECT * FROM {tgt} {_win(date_col)})
+        SELECT '{col}' AS column, count(*) AS compared,
+               sum(CASE WHEN s.`{col}` <=> t.`{col}` THEN 1 ELSE 0 END) AS matches,
+               round(100.0 * sum(CASE WHEN s.`{col}` <=> t.`{col}` THEN 1 ELSE 0 END) /
+                     nullif(count(*), 0), 2) AS match_pct
+        FROM s JOIN t ON {on}
+    """)
+'''
+
+
+def _validation_cells(result: RcaResult) -> list[dict[str, Any]]:
+    if not result.table_summaries:
+        return []
+    from functools import reduce  # noqa: F401 (used in generated code)
+
+    row_calls, col_calls = [], []
+    for s in result.table_summaries:
+        keys = s.join_keys
+        dc = f'"{s.date_column}"' if s.date_column else "None"
+        row_calls.append(f'    validate_rows("{s.source_table}", "{s.target_table}", {keys}, {dc}),')
+        for c in s.mismatch_columns:
+            col_calls.append(
+                f'    validate_column("{s.source_table}", "{s.target_table}", {keys}, "{c}", {dc}),'
+            )
+
+    row_code = (
+        "# Row-level match per table pair (edit date_col via the widgets above):\n"
+        "row_checks = [\n" + "\n".join(row_calls) + "\n]\n"
+        "from functools import reduce\n"
+        "reduce(lambda a, b: a.unionByName(b), row_checks).display()"
+    )
+    col_code = (
+        "# Column-level match % (over the same date window):\n"
+        "col_checks = [\n" + "\n".join(col_calls) + "\n]\n"
+        "reduce(lambda a, b: a.unionByName(b), col_checks).display()"
+        if col_calls else "# No column-level mismatches to validate."
+    )
+    return [
+        _md_cell("---\n# 📅 Validation (row & column match %, date-range filterable)\n\n"
+                 "Set `start_date` / `end_date` widgets to validate a slice, then re-run."),
+        _code_cell(_VALIDATION_HELPERS),
+        _code_cell(row_code),
+        _code_cell(col_code),
+    ]
+
+
 def build_notebook(result: RcaResult) -> dict[str, Any]:
-    cells = [
-        _md_cell(build_tldr(result)),
+    cells = [_md_cell(build_tldr(result))]
+    cells += _validation_cells(result)
+    cells.append(
         _md_cell("---\n# 🔬 Findings & evidence\n\nGrouped by table pair (as Lakebridge "
                  "reports), then schema → row-level → column-level. Each finding shows the "
-                 "concluded verdict and the query that confirms it. Re-run any cell to drill deeper."),
-    ]
+                 "concluded verdict and the query that confirms it. Re-run any cell to drill deeper.")
+    )
     by_table: dict[str, list[Finding]] = {}
     for f in result.findings:
         by_table.setdefault(f.target_table, []).append(f)

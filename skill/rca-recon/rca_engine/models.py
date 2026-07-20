@@ -108,12 +108,50 @@ class Finding:
 
 
 @dataclass
+class TableSummary:
+    """Per-table-pair reconciliation totals (from Lakebridge recon metrics).
+
+    Captured for *every* reconciled table pair, including clean ones, so the report
+    can show an overall row-level and column-level match rate — not just the issues.
+    """
+
+    source_table: str
+    target_table: str
+    source_count: int = 0
+    target_count: int = 0
+    missing_in_source: int = 0   # rows in target but not source (extra in target)
+    missing_in_target: int = 0   # rows in source but not target (missing in target)
+    absolute_mismatch: int = 0   # common rows that differ on >= 1 column
+    mismatch_columns: list[str] = field(default_factory=list)
+    schema_ok: bool = True
+    join_keys: list[str] = field(default_factory=list)
+    date_column: Optional[str] = None  # best-guess date/timestamp col for range filtering
+
+    @property
+    def common_rows(self) -> int:
+        return max(self.source_count - self.missing_in_target, 0)
+
+    @property
+    def matched_rows(self) -> int:
+        return max(self.common_rows - self.absolute_mismatch, 0)
+
+    @property
+    def row_match_pct(self) -> float:
+        """Share of source rows that exist in target AND match on all columns."""
+
+        if self.source_count <= 0:
+            return 100.0 if self.matched_rows == 0 else 0.0
+        return round(100.0 * self.matched_rows / self.source_count, 2)
+
+
+@dataclass
 class RcaResult:
     """The full RCA output for a recon run."""
 
     recon_id: str
     dialect: str
     findings: list[Finding] = field(default_factory=list)
+    table_summaries: list[TableSummary] = field(default_factory=list)
 
     def verdict_counts(self) -> dict[str, int]:
         counts: dict[str, int] = {v.value: 0 for v in Verdict}

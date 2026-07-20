@@ -131,11 +131,16 @@ resolved. Do **not** stop if anything is unresolved.
   2. **📋 Reconciliation overview** — one row per table pair showing schema,
      row-level (missing in target / extra in target), mismatched columns, and a
      verdict rollup — the same breakdown Lakebridge reports.
-  3. **🎯 Findings by verdict** — action tables (what to fix vs route).
-  4. **🔬 Findings & evidence** — grouped by table pair, ordered schema → row-level
+  3. **📈 Match rates** — overall **row-level** and **column-level match %** for
+     *every* table pair (including clean ones), not just the issues.
+  4. **📅 Validation (date-range filterable)** — `dbutils.widgets` for
+     `start_date`/`end_date` plus `validate_rows()` / `validate_column()` helpers
+     and per-table calls, so the user can re-check row/column match % for any window.
+  5. **🎯 Findings by verdict** — action tables (what to fix vs route).
+  6. **🔬 Findings & evidence** — grouped by table pair, ordered schema → row-level
      → column-level; each finding has category/confidence/owner, root cause, fix,
      the confirming query + its evidence, and sample diffs.
-  5. **🧾 Conclusion & recommended actions** — grouped by owner.
+  7. **🧾 Conclusion & recommended actions** — grouped by owner.
 - The markdown is rendered from the concluded result, so every verdict is already
   backed by an executed drill-down query, and per-column counts are reconciled to
   the exact number of differing rows (recon `details` only stores a sample).

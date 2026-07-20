@@ -27,7 +27,18 @@ from __future__ import annotations
 import json
 from typing import Any, Protocol
 
-from rca_engine.models import Finding, MismatchSample, ReconType
+import re
+
+from rca_engine.models import Finding, MismatchSample, ReconType, TableSummary
+
+_DATE_RE = re.compile(r"(date|dt|_ts|timestamp|time|day|month|year)", re.IGNORECASE)
+
+
+def _guess_date_col(names: list[str]) -> str | None:
+    for n in names:
+        if n and _DATE_RE.search(n):
+            return n
+    return None
 
 
 class QueryRunner(Protocol):
@@ -106,13 +117,12 @@ def _row_samples(data: Any, limit: int = 200) -> list[MismatchSample]:
     return samples
 
 
-def ingest(
+def ingest_with_summaries(
     runner: QueryRunner,
     recon_id: str,
     recon_catalog: str,
     recon_schema: str,
-    key_columns: list[str] | None = None,  # unused; kept for API compatibility
-) -> list[Finding]:
+) -> tuple[list[Finding], list[TableSummary]]:
     base = f"{recon_catalog}.{recon_schema}"
 
     main_rows = runner.query(
@@ -121,6 +131,7 @@ def ingest(
     )
 
     findings: list[Finding] = []
+    summaries: list[TableSummary] = []
     for m in main_rows:
         table_id = m.get("recon_table_id")
         source_table = _fqn(m.get("source_table"))
@@ -214,4 +225,37 @@ def ingest(
                 )
             )
 
+        # Per-table summary (captured for every pair, clean or not).
+        mismatch_rows = _rows(by_type.get("mismatch"))
+        join_keys = list(_keys_of(mismatch_rows[0]).keys()) if mismatch_rows else []
+        candidate_names = list(mismatch_columns) + join_keys
+        for r in _rows(by_type.get("missing_in_target")) + _rows(by_type.get("missing_in_source")):
+            candidate_names += list(r.keys())
+        summaries.append(
+            TableSummary(
+                source_table=source_table,
+                target_table=target_table,
+                source_count=source_count,
+                target_count=target_count,
+                missing_in_source=missing_in_source,
+                missing_in_target=missing_in_target,
+                absolute_mismatch=_int(mx.get("absolute_mismatch")),
+                mismatch_columns=mismatch_columns,
+                schema_ok=schema_ok,
+                join_keys=join_keys,
+                date_column=_guess_date_col(candidate_names),
+            )
+        )
+
+    return findings, summaries
+
+
+def ingest(
+    runner: QueryRunner,
+    recon_id: str,
+    recon_catalog: str,
+    recon_schema: str,
+    key_columns: list[str] | None = None,  # unused; kept for API compatibility
+) -> list[Finding]:
+    findings, _ = ingest_with_summaries(runner, recon_id, recon_catalog, recon_schema)
     return findings

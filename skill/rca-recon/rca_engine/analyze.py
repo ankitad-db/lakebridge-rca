@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from rca_engine.classify import classify_all
 from rca_engine.drilldown import run_drilldown
-from rca_engine.ingest import QueryRunner, ingest
+from rca_engine.ingest import QueryRunner, ingest_with_summaries
 from rca_engine.models import RcaResult
 
 
@@ -20,8 +20,8 @@ def analyze(
     dialect: str = "snowflake",
     drilldown: bool = True,
 ) -> RcaResult:
-    findings = ingest(runner, recon_id, recon_catalog, recon_schema)
+    findings, summaries = ingest_with_summaries(runner, recon_id, recon_catalog, recon_schema)
     findings = classify_all(findings, dialect=dialect)
     if drilldown:
         findings = run_drilldown(findings, runner)
-    return RcaResult(recon_id=recon_id, dialect=dialect, findings=findings)
+    return RcaResult(recon_id=recon_id, dialect=dialect, findings=findings, table_summaries=summaries)
