@@ -74,4 +74,14 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                 meta={"offset_seconds": delta},
             )
         )
+    elif delta >= 86400:
+        signals.append(
+            ProbeSignal(
+                category=RootCauseCategory.UPSTREAM_DRIFT,
+                strength=0.65,
+                detail=f"Large time shift (~{delta/86400:.1f}d) between source and target; "
+                f"points to a snapshot/load-time (freshness) difference rather than code translation.",
+                meta={"offset_seconds": delta, "provenance_candidate": True},
+            )
+        )
     return signals

@@ -7,7 +7,8 @@ from typing import Any
 from rca_engine.models import RootCauseCategory
 from rca_engine.probes import ProbeSignal
 
-_NULLISH = {None, "", "null", "NULL", "None"}
+# ``_null_recon_`` is Lakebridge's sentinel for a NULL value in details maps.
+_NULLISH = {None, "", "null", "NULL", "None", "_null_recon_"}
 _TRUE = {"y", "yes", "t", "true", "1", 1, True}
 _FALSE = {"n", "no", "f", "false", "0", 0, False}
 
@@ -30,29 +31,31 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
 
     s_null, t_null = _is_nullish(source_value), _is_nullish(target_value)
 
-    # One side NULL/empty, the other has a real value.
-    if s_null != t_null:
-        # Distinguish NULL-vs-empty-string (formatting) from NULL-vs-populated (data gap).
-        vals = {str(source_value), str(target_value)}
-        if vals <= {"", "None", "null", "NULL"}:
+    # Both nullish but different textual representation (e.g. NULL vs empty string).
+    if s_null and t_null:
+        if str(source_value) != str(target_value):
             signals.append(
                 ProbeSignal(
                     category=RootCauseCategory.NULL_BOOLEAN,
                     strength=0.85,
-                    detail="One side NULL, other empty string; NULL-handling/representation difference.",
+                    detail="One side NULL, other empty string; NULL-handling/representation "
+                    "difference (map NULL/empty explicitly during load).",
                 )
             )
-        else:
-            populated = "target" if s_null else "source"
-            signals.append(
-                ProbeSignal(
-                    category=RootCauseCategory.UPSTREAM_DRIFT,
-                    strength=0.8,
-                    detail=f"NULL/absent on one side but populated on the {populated}; "
-                    f"often a genuine source data gap rather than a migration defect.",
-                    meta={"populated_side": populated, "provenance_candidate": True},
-                )
+        return signals
+
+    # Exactly one side NULL/empty, the other has a real value -> likely a source data gap.
+    if s_null != t_null:
+        populated = "target" if s_null else "source"
+        signals.append(
+            ProbeSignal(
+                category=RootCauseCategory.UPSTREAM_DRIFT,
+                strength=0.8,
+                detail=f"NULL/absent on one side but populated on the {populated}; "
+                f"often a genuine source data gap rather than a migration defect.",
+                meta={"populated_side": populated, "provenance_candidate": True},
             )
+        )
         return signals
 
     # Boolean representation mismatch ('Y'/'N' vs true/false vs 1/0).

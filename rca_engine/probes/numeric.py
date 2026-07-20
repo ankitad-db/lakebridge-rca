@@ -33,36 +33,73 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
 
     signals: list[ProbeSignal] = []
     diff = abs(s - t)
+    denom = max(abs(s), abs(t))
+    rel = (diff / denom) if denom != 0 else Decimal(0)
+    precision_fired = False
 
     # Equal after rounding to the smaller scale -> precision/scale loss (e.g. DECIMAL->DOUBLE).
     min_scale = min(_scale(s), _scale(t))
-    if min_scale > 0 or s != t:
-        try:
-            q = Decimal(1).scaleb(-min_scale) if min_scale > 0 else Decimal(1)
-            if s.quantize(q) == t.quantize(q):
+    try:
+        q = Decimal(1).scaleb(-min_scale) if min_scale > 0 else Decimal(1)
+        if s.quantize(q) == t.quantize(q):
+            precision_fired = True
+            if min_scale == 0 and _scale(s) > 0:
+                # Source has decimals but target is whole -> rounding to whole units,
+                # typically a ROUND() precision/rounding-mode difference in the transform.
+                signals.append(
+                    ProbeSignal(
+                        category=RootCauseCategory.TRANSPILATION,
+                        strength=0.85,
+                        detail="Target equals source rounded to whole units; consistent with a "
+                        "ROUND() precision/rounding-mode difference in the translated aggregation.",
+                        meta={"source": str(s), "target": str(t), "scale": min_scale},
+                    )
+                )
+            else:
                 signals.append(
                     ProbeSignal(
                         category=RootCauseCategory.TYPE_PRECISION,
                         strength=0.9,
                         detail=f"Values equal after rounding to scale {min_scale}; "
-                        f"likely precision/scale loss (e.g. NUMBER(p,s) migrated to DOUBLE).",
+                        f"likely precision/scale loss (e.g. NUMBER(p,s) migrated to a lower scale/DOUBLE).",
                         meta={"source": str(s), "target": str(t), "scale": min_scale},
                     )
                 )
-        except InvalidOperation:
-            pass
+    except InvalidOperation:
+        pass
 
-    # Tiny relative difference -> floating-point representation / summation order.
-    denom = max(abs(s), abs(t))
-    if denom != 0:
-        rel = diff / denom
-        if Decimal("0") < rel < Decimal("1e-6"):
+    # Relative-difference interpretations (only if not already explained by scale loss).
+    if not precision_fired and denom != 0:
+        target_is_whole = t == t.to_integral_value()
+        source_is_whole = s == s.to_integral_value()
+        if target_is_whole and not source_is_whole and rel < Decimal("0.05"):
+            # Target rounded to whole units while source keeps decimals -> ROUND()
+            # rounding-mode/precision difference in the translated aggregation.
+            signals.append(
+                ProbeSignal(
+                    category=RootCauseCategory.TRANSPILATION,
+                    strength=0.72,
+                    detail="Target is rounded to whole units while source has a fractional part; "
+                    "consistent with a ROUND() precision/rounding-mode difference in the transform.",
+                    meta={"source": str(s), "target": str(t), "relative_diff": str(rel)},
+                )
+            )
+        elif Decimal("0") < rel < Decimal("1e-6"):
             signals.append(
                 ProbeSignal(
                     category=RootCauseCategory.TYPE_PRECISION,
                     strength=0.7,
                     detail=f"Very small relative difference ({rel:.2e}); "
                     f"consistent with float representation or aggregation ordering.",
+                    meta={"relative_diff": str(rel)},
+                )
+            )
+        elif Decimal("0") < rel < Decimal("1e-3"):
+            signals.append(
+                ProbeSignal(
+                    category=RootCauseCategory.TYPE_PRECISION,
+                    strength=0.6,
+                    detail=f"Small relative difference ({rel:.2e}); likely rounding or scale loss.",
                     meta={"relative_diff": str(rel)},
                 )
             )

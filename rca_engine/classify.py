@@ -27,10 +27,12 @@ _MIGRATION = {
     RootCauseCategory.VOLUME_MISSING,
     RootCauseCategory.VOLUME_EXTRA,
     RootCauseCategory.NULL_BOOLEAN,
+    RootCauseCategory.STRING_FORMAT,   # the transform altered the value (case/whitespace); may be low-severity
     RootCauseCategory.ENV_CONFIG,
 }
 _GENUINE = {RootCauseCategory.UPSTREAM_DRIFT}
-_COSMETIC = {RootCauseCategory.STRING_FORMAT, RootCauseCategory.SEMI_STRUCTURED}
+# Only truly semantically-equal differences (e.g. JSON key reordering) are benign.
+_COSMETIC = {RootCauseCategory.SEMI_STRUCTURED}
 
 _NEEDS_REVIEW_THRESHOLD = 0.5
 
@@ -139,6 +141,43 @@ def classify_finding(finding: Finding, kb: KnowledgeBase) -> Finding:
     return finding
 
 
+def _freshness_pass(findings: list[Finding], kb: KnowledgeBase) -> None:
+    """Table-level inference: if a table shows timestamp-based snapshot drift,
+    treat its remaining *unexplained, partial* column mismatches as likely
+    genuine upstream drift (a stale snapshot affects a subset of rows) rather
+    than migration defects. The live drill-down confirms."""
+
+    stale_tables = {
+        f.target_table
+        for f in findings
+        if f.recon_type == ReconType.COLUMN_MISMATCH
+        and f.top_hypothesis is not None
+        and f.top_hypothesis.category == RootCauseCategory.UPSTREAM_DRIFT
+    }
+    for f in findings:
+        if f.target_table not in stale_tables or f.recon_type != ReconType.COLUMN_MISMATCH:
+            continue
+        top = f.top_hypothesis
+        is_unexplained = top is None or top.category == RootCauseCategory.UNKNOWN
+        is_partial = 0 <= f.mismatch_count < (f.total_count or 0)
+        if is_unexplained and is_partial:
+            f.hypotheses = [
+                Hypothesis(
+                    category=RootCauseCategory.UPSTREAM_DRIFT,
+                    verdict=Verdict.GENUINE_DATA,
+                    confidence=0.55,
+                    rationale=f"`{f.column}` differs on a subset of rows in a table that shows "
+                    f"snapshot/load-time drift; likely a genuine upstream data difference. "
+                    f"Confirm with a live drill-down before actioning.",
+                    remediation=kb.remediation_for(RootCauseCategory.UPSTREAM_DRIFT.value),
+                    recommended_owner="data owner / source team",
+                    evidence=[Evidence(label="freshness", detail="table has timestamp snapshot drift")],
+                )
+            ]
+
+
 def classify_all(findings: list[Finding], dialect: str = "snowflake") -> list[Finding]:
     kb = load_kb(dialect)
-    return [classify_finding(f, kb) for f in findings]
+    classified = [classify_finding(f, kb) for f in findings]
+    _freshness_pass(classified, kb)
+    return classified

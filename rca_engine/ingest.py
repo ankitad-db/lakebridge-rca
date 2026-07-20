@@ -1,9 +1,25 @@
 """Ingest Lakebridge reconcile output into normalized ``Finding`` objects.
 
-Lakebridge writes reconcile results to a metastore schema (default ``remorph``)
-with ``main`` / ``metrics`` / ``details`` tables. Exact column names vary by
-version, so ingestion goes through a small ``QueryRunner`` and defensive parsing.
-The concrete SQL is finalized in Phase 2 once we observe the real output schema.
+Reads the reconcile ``main`` / ``metrics`` / ``details`` tables for one
+``recon_id``. ``metrics`` is the source of truth for counts and which columns
+mismatched; ``details`` supplies row-level samples used as evidence and probe
+inputs.
+
+Observed schema (Lakebridge / lakebridge reconcile):
+
+- ``main``    : recon_table_id, recon_id, source_table<struct>, target_table<struct>, ...
+- ``metrics`` : recon_metrics<struct{source_record_count, target_record_count,
+                row_comparison{missing_in_source, missing_in_target},
+                column_comparison{absolute_mismatch, mismatch_columns},
+                schema_comparison}>, ...
+- ``details`` : recon_type ('mismatch'|'missing_in_source'|'missing_in_target'|'schema'),
+                data<array<map<string,string>>>
+
+``details.data`` maps:
+- mismatch  : ``<col>_base`` (source), ``<col>_compare`` (target), ``<col>_match``
+              plus the join keys as plain columns.
+- missing_* : the full row as a flat map.
+- schema    : {source_column, source_datatype, databricks_column, databricks_datatype, is_valid}.
 """
 
 from __future__ import annotations
@@ -15,59 +31,78 @@ from rca_engine.models import Finding, MismatchSample, ReconType
 
 
 class QueryRunner(Protocol):
-    """Minimal execution backend: run SQL, return rows as dicts.
-
-    Implementations: Databricks SQL connector, a Spark session wrapper, or a
-    fake for tests.
-    """
-
     def query(self, sql: str) -> list[dict[str, Any]]: ...
 
 
-_RECON_TYPE_MAP = {
-    "mismatch": ReconType.COLUMN_MISMATCH,
-    "missing_in_target": ReconType.MISSING_IN_TARGET,
-    "missing_in_source": ReconType.MISSING_IN_SOURCE,
-    "schema": ReconType.SCHEMA,
-}
+def _as_obj(value: Any) -> Any:
+    """Coerce a struct/array cell to a Python object (JSON string or already-parsed)."""
 
-
-def _coerce_samples(raw: Any, key_columns: list[str]) -> list[MismatchSample]:
-    """Turn a details ``data`` payload into MismatchSample rows.
-
-    Lakebridge stores mismatch samples as rows with ``<col>_base``/``<col>_compare``
-    pairs (or a JSON array of maps). We pair those up per column.
-    """
-
-    if isinstance(raw, str):
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
         try:
-            raw = json.loads(raw)
+            return json.loads(value)
         except json.JSONDecodeError:
-            return []
-    if isinstance(raw, dict):
-        raw = [raw]
-    if not isinstance(raw, list):
-        return []
+            return value
+    return value
 
-    samples: list[MismatchSample] = []
-    for row in raw:
-        if not isinstance(row, dict):
-            continue
-        keys = {k: row[k] for k in key_columns if k in row}
-        # Detect base/compare column pairs.
-        bases = {k[:-5] for k in row if k.endswith("_base")}
-        compares = {k[:-8] for k in row if k.endswith("_compare")}
-        for col in sorted(bases & compares):
-            samples.append(
-                MismatchSample(
-                    keys=keys,
-                    column=col,
-                    source_value=row.get(f"{col}_base"),
-                    target_value=row.get(f"{col}_compare"),
+
+def _fqn(struct: Any) -> str:
+    s = _as_obj(struct)
+    if isinstance(s, dict):
+        parts = [s.get("catalog"), s.get("schema"), s.get("table_name")]
+        return ".".join(p for p in parts if p)
+    return str(s)
+
+
+def _rows(data: Any) -> list[dict[str, Any]]:
+    data = _as_obj(data)
+    if isinstance(data, dict):
+        return [data]
+    if isinstance(data, list):
+        return [r for r in data if isinstance(r, dict)]
+    return []
+
+
+def _keys_of(row: dict[str, Any]) -> dict[str, Any]:
+    """Join-key columns in a mismatch map are the plain (non-_base/_compare/_match) entries."""
+
+    return {
+        k: v for k, v in row.items()
+        if not (k.endswith("_base") or k.endswith("_compare") or k.endswith("_match"))
+    }
+
+
+def _mismatch_samples(data: Any, columns: list[str], limit: int = 200) -> dict[str, list[MismatchSample]]:
+    out: dict[str, list[MismatchSample]] = {c: [] for c in columns}
+    for row in _rows(data):
+        keys = _keys_of(row)
+        for col in columns:
+            base, compare, match = f"{col}_base", f"{col}_compare", f"{col}_match"
+            if base not in row and compare not in row:
+                continue
+            mismatched = (str(row.get(match)).lower() == "false") if match in row \
+                else (row.get(base) != row.get(compare))
+            if not mismatched:
+                continue
+            if len(out[col]) < limit:
+                out[col].append(
+                    MismatchSample(
+                        keys=keys,
+                        column=col,
+                        source_value=row.get(base),
+                        target_value=row.get(compare),
+                    )
                 )
-            )
-        if not (bases & compares):
-            samples.append(MismatchSample(keys=keys))
+    return out
+
+
+def _row_samples(data: Any, limit: int = 200) -> list[MismatchSample]:
+    samples: list[MismatchSample] = []
+    for row in _rows(data):
+        if len(samples) >= limit:
+            break
+        samples.append(MismatchSample(keys=row))
     return samples
 
 
@@ -76,15 +111,8 @@ def ingest(
     recon_id: str,
     recon_catalog: str,
     recon_schema: str,
-    key_columns: list[str] | None = None,
+    key_columns: list[str] | None = None,  # unused; kept for API compatibility
 ) -> list[Finding]:
-    """Load all findings for a recon run.
-
-    Note: table/column names below match the common Lakebridge layout and are
-    verified against the live schema in Phase 2.
-    """
-
-    key_columns = key_columns or []
     base = f"{recon_catalog}.{recon_schema}"
 
     main_rows = runner.query(
@@ -95,39 +123,95 @@ def ingest(
     findings: list[Finding] = []
     for m in main_rows:
         table_id = m.get("recon_table_id")
-        detail_rows = runner.query(
-            f"SELECT recon_type, data FROM {base}.details "
-            f"WHERE recon_table_id = '{table_id}'"
+        source_table = _fqn(m.get("source_table"))
+        target_table = _fqn(m.get("target_table"))
+
+        metrics = runner.query(
+            "SELECT recon_metrics.source_record_count AS source_record_count, "
+            "recon_metrics.target_record_count AS target_record_count, "
+            "recon_metrics.row_comparison.missing_in_source AS missing_in_source, "
+            "recon_metrics.row_comparison.missing_in_target AS missing_in_target, "
+            "recon_metrics.column_comparison.absolute_mismatch AS absolute_mismatch, "
+            "recon_metrics.column_comparison.mismatch_columns AS mismatch_columns, "
+            "recon_metrics.schema_comparison AS schema_comparison "
+            f"FROM {base}.metrics WHERE recon_table_id = {table_id}"
         )
+        mx = metrics[0] if metrics else {}
+
+        def _int(v: Any) -> int:
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return 0
+
+        def _bool(v: Any) -> bool:
+            return str(v).lower() == "true"
+
+        source_count = _int(mx.get("source_record_count"))
+        target_count = _int(mx.get("target_record_count"))
+        missing_in_source = _int(mx.get("missing_in_source"))
+        missing_in_target = _int(mx.get("missing_in_target"))
+        mismatch_columns = [c.strip() for c in str(mx.get("mismatch_columns") or "").split(",") if c.strip()]
+        schema_ok = _bool(mx.get("schema_comparison")) if mx.get("schema_comparison") is not None else True
+
+        detail_rows = runner.query(
+            f"SELECT recon_type, data FROM {base}.details WHERE recon_table_id = {table_id}"
+        )
+        by_type: dict[str, Any] = {}
         for d in detail_rows:
-            recon_type = _RECON_TYPE_MAP.get(str(d.get("recon_type")), ReconType.COLUMN_MISMATCH)
-            samples = _coerce_samples(d.get("data"), key_columns)
-            # Column-level findings are split per column for precise classification.
-            if recon_type == ReconType.COLUMN_MISMATCH:
-                by_col: dict[str | None, list[MismatchSample]] = {}
-                for s in samples:
-                    by_col.setdefault(s.column, []).append(s)
-                for col, col_samples in by_col.items():
-                    findings.append(
-                        Finding(
-                            recon_id=recon_id,
-                            source_table=str(m.get("source_table")),
-                            target_table=str(m.get("target_table")),
-                            recon_type=recon_type,
-                            column=col,
-                            mismatch_count=len(col_samples),
-                            samples=col_samples,
-                        )
-                    )
-            else:
+            by_type.setdefault(str(d.get("recon_type")), []).extend(_rows(d.get("data")))
+
+        common = dict(recon_id=recon_id, source_table=source_table, target_table=target_table)
+
+        # Column mismatches (one finding per mismatched column).
+        if mismatch_columns:
+            per_col = _mismatch_samples(by_type.get("mismatch"), mismatch_columns)
+            for col in mismatch_columns:
                 findings.append(
                     Finding(
-                        recon_id=recon_id,
-                        source_table=str(m.get("source_table")),
-                        target_table=str(m.get("target_table")),
-                        recon_type=recon_type,
-                        mismatch_count=len(samples),
-                        samples=samples,
+                        **common,
+                        recon_type=ReconType.COLUMN_MISMATCH,
+                        column=col,
+                        mismatch_count=len(per_col.get(col, [])),
+                        total_count=source_count,
+                        samples=per_col.get(col, []),
+                        metadata={"absolute_mismatch": _int(mx.get("absolute_mismatch"))},
                     )
                 )
+
+        # Missing rows.
+        if missing_in_target:
+            findings.append(
+                Finding(
+                    **common,
+                    recon_type=ReconType.MISSING_IN_TARGET,
+                    mismatch_count=missing_in_target,
+                    total_count=source_count,
+                    samples=_row_samples(by_type.get("missing_in_target")),
+                )
+            )
+        if missing_in_source:
+            findings.append(
+                Finding(
+                    **common,
+                    recon_type=ReconType.MISSING_IN_SOURCE,
+                    mismatch_count=missing_in_source,
+                    total_count=target_count,
+                    samples=_row_samples(by_type.get("missing_in_source")),
+                )
+            )
+
+        # Schema / datatype differences.
+        if not schema_ok:
+            invalid = [r for r in _rows(by_type.get("schema")) if str(r.get("is_valid")).lower() == "false"]
+            findings.append(
+                Finding(
+                    **common,
+                    recon_type=ReconType.SCHEMA,
+                    mismatch_count=len(invalid),
+                    samples=[MismatchSample(keys=r) for r in invalid],
+                    metadata={"schema_diffs": invalid},
+                )
+            )
+
     return findings

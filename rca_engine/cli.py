@@ -15,15 +15,19 @@ from rca_engine.models import RcaResult
 from rca_engine.report import build_tldr, write_json, write_notebook
 
 
-def _build_runner(profile: str | None):
-    """Construct a Databricks-backed QueryRunner. Imported lazily so the core
-    package has no hard dependency on the connector."""
+def _build_runner(profile: str | None, warehouse_id: str | None):
+    """Construct a QueryRunner.
 
-    from databricks import sql  # type: ignore
+    Inside a Databricks notebook a ``spark`` session is in scope, so the Genie
+    Code skill uses ``SparkQueryRunner(spark)`` directly. For local CLI runs we
+    use the SQL Statement Execution API via the ``databricks`` CLI.
+    """
 
-    raise NotImplementedError(
-        "Wire the Databricks SQL connection (host/http_path/token or profile) here in Phase 3."
-    )
+    from rca_engine.runners import StatementRunner
+
+    if not warehouse_id:
+        raise SystemExit("--warehouse-id is required for local CLI runs.")
+    return StatementRunner(warehouse_id=warehouse_id, profile=profile or "ps-dr-east")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,9 +38,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dialect", default="snowflake")
     parser.add_argument("--output-path", default="rca_output")
     parser.add_argument("--profile", default=None)
+    parser.add_argument("--warehouse-id", default=None)
     args = parser.parse_args(argv)
 
-    runner = _build_runner(args.profile)
+    runner = _build_runner(args.profile, args.warehouse_id)
 
     from rca_engine.ingest import ingest
 
