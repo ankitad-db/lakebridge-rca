@@ -50,35 +50,38 @@ except ImportError:
     dbutils.library.restartPython()
 ```
 
-### 2. Deterministic first pass (fast, no LLM guessing)
-Use the in-notebook Spark session as the query backend:
+### 2. Run the end-to-end engine (ingest → classify → live drill-down)
+Use the in-notebook Spark session as the query backend. `analyze()` reads
+`main`/`metrics`/`details`, runs deterministic probes, **and then executes a live
+confirmation query per finding** (attaching the query + result as evidence and
+finalizing the verdict/confidence). This is the concluded result — not a guess.
 
 ```python
-import yaml, json
+import yaml
 from rca_engine.runners import SparkQueryRunner
-from rca_engine.ingest import ingest
-from rca_engine.classify import classify_all
-from rca_engine.models import RcaResult
-from rca_engine.report import build_tldr, build_notebook, write_notebook
+from rca_engine.analyze import analyze
+from rca_engine.report import build_tldr, write_json, write_notebook
 
 cfg = yaml.safe_load(open("config.yml"))            # relative to this skill folder
 recon_id = "<RECON_ID_FROM_USER>"
 
-runner = SparkQueryRunner(spark)
-findings = ingest(runner, recon_id, cfg["recon_catalog"], cfg["recon_schema"])
-findings = classify_all(findings, dialect=cfg.get("dialect", "snowflake"))
-result = RcaResult(recon_id=recon_id, dialect=cfg.get("dialect", "snowflake"), findings=findings)
+result = analyze(
+    SparkQueryRunner(spark), recon_id,
+    cfg["recon_catalog"], cfg["recon_schema"],
+    dialect=cfg.get("dialect", "snowflake"), drilldown=True,
+)
 print(build_tldr(result))
+write_notebook(result, f"/tmp/rca_{recon_id}.ipynb")   # readable, symbol-coded report
 ```
 
-This reads `main` / `metrics` / `details`, runs deterministic probes, and gives
-each finding a category, verdict, and confidence. See `references/taxonomy.md`
-for how probes map to categories.
+`scripts/run_rca.py` wraps exactly this. See `references/taxonomy.md` for how
+probes map to categories.
 
-### 3. Live drill-down loop (this is the point of running live)
-For every finding, **confirm the hypothesis with a real query** before trusting
-it — and always drill down when confidence < 0.8 or verdict is `needs_review`.
-Use these patterns (source = `main.source_table`, target = `main.target_table`):
+### 3. Go deeper on anything unresolved
+`analyze()` already confirms the common cases. For any finding still at
+confidence < 0.8, verdict `needs_review`, or where the user wants proof, run an
+extra query and update the finding. Useful patterns (source = `main.source_table`,
+target = `main.target_table`):
 
 - **type_precision / transpilation (numeric):** compare rounded vs raw, and check
   the aggregation/transform SQL for `ROUND`, casts, or scale changes.
@@ -96,14 +99,15 @@ Use these patterns (source = `main.source_table`, target = `main.target_table`):
 - **string_format:** `SELECT s.<col>, t.<col> FROM ... WHERE trim(lower(s.<col>))=trim(lower(t.<col>)) AND s.<col><>t.<col>` — trim/case only ⇒ formatting.
 
 Update each finding's verdict/confidence with what the query shows. Iterate until
-resolved. Do **not** stop at the deterministic pass if anything is unresolved.
+resolved. Do **not** stop if anything is unresolved.
 
 ### 4. Produce the RCA notebook + conclusion
-- Generate the notebook scaffold (`write_notebook(result, "/tmp/rca_<recon_id>.ipynb")`),
-  then enrich each finding section with the live query, its output, the confirmed
-  verdict, remediation (from the knowledge base), and the owner.
-- End with a **TL;DR**: counts by verdict, the headline root causes, and a clear
-  "what to fix vs. what to route to the data owner" list.
+- `write_notebook(result, "/tmp/rca_<recon_id>.ipynb")` emits a symbol-coded report
+  grouped by verdict: a TL;DR table (counts by verdict) followed by one section per
+  finding with category/confidence/owner, root cause, fix, the confirming query +
+  its evidence, and sample diffs. Re-run any query cell to drill deeper.
+- End with the **TL;DR** from `build_tldr(result)`: counts by verdict, headline root
+  causes, and a clear "what to fix vs. what to route to the data owner" list.
 
 ## Rules
 

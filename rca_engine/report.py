@@ -1,8 +1,8 @@
-"""Emit structured findings and an RCA notebook scaffold.
+"""Render a concluded RCA as a readable TL;DR and a Databricks notebook.
 
-The engine produces the deterministic first pass (findings + candidate
-hypotheses + TL;DR). The Genie Code skill runs the notebook live, adds evidence
-from real queries, and finalizes the narrative.
+The engine runs the full pipeline (ingest -> classify -> live drill-down); this
+module turns the concluded ``RcaResult`` into a professional, skimmable report
+grouped by verdict, with symbols, an executed query, and its result per finding.
 """
 
 from __future__ import annotations
@@ -11,14 +11,33 @@ import dataclasses
 import json
 from typing import Any
 
-from rca_engine.models import Finding, RcaResult, Verdict
+from rca_engine.models import Finding, RcaResult, RootCauseCategory, Verdict
 
-_VERDICT_LABEL = {
-    Verdict.MIGRATION_INDUCED: "Migration-induced",
-    Verdict.GENUINE_DATA: "Genuine data difference",
-    Verdict.BENIGN: "Benign / expected",
-    Verdict.NEEDS_REVIEW: "Needs review",
+# Verdict presentation (symbol + label + one-line action).
+_VERDICT = {
+    Verdict.MIGRATION_INDUCED: ("🔧", "Migration-induced", "Fix in the migration"),
+    Verdict.GENUINE_DATA: ("📊", "Genuine data difference", "Route to the data owner"),
+    Verdict.BENIGN: ("✅", "Benign / expected", "No action"),
+    Verdict.NEEDS_REVIEW: ("🔍", "Needs review", "Investigate further"),
 }
+
+_CATEGORY_ICON = {
+    RootCauseCategory.TYPE_PRECISION: "🔢",
+    RootCauseCategory.TIMEZONE: "🕐",
+    RootCauseCategory.TRANSPILATION: "🔀",
+    RootCauseCategory.STRING_FORMAT: "🔤",
+    RootCauseCategory.NULL_BOOLEAN: "␀",
+    RootCauseCategory.SEMI_STRUCTURED: "🧬",
+    RootCauseCategory.VOLUME_MISSING: "➖",
+    RootCauseCategory.VOLUME_EXTRA: "➕",
+    RootCauseCategory.UPSTREAM_DRIFT: "🌊",
+    RootCauseCategory.ENV_CONFIG: "⚙️",
+    RootCauseCategory.RECON_CONFIG: "🧷",
+    RootCauseCategory.UNKNOWN: "❓",
+}
+
+# Order verdicts appear in the report.
+_VERDICT_ORDER = [Verdict.MIGRATION_INDUCED, Verdict.GENUINE_DATA, Verdict.NEEDS_REVIEW, Verdict.BENIGN]
 
 
 def to_dict(result: RcaResult) -> dict[str, Any]:
@@ -30,28 +49,64 @@ def write_json(result: RcaResult, path: str) -> None:
         json.dump(to_dict(result), f, indent=2, default=str)
 
 
+def _loc(f: Finding) -> str:
+    table = f.target_table.split(".")[-1]
+    if f.column:
+        return f"{table}.{f.column}"
+    suffix = {"missing_in_target": " (missing rows)", "missing_in_source": " (extra rows)",
+              "schema": " (schema)"}.get(f.recon_type.value, "")
+    return f"{table}{suffix}"
+
+
+def _cat_label(cat: RootCauseCategory) -> str:
+    return f"{_CATEGORY_ICON.get(cat, '•')} {cat.value}"
+
+
+def _confirmed(f: Finding) -> bool:
+    h = f.top_hypothesis
+    return bool(h and any(e.data and e.data.get("confirmed") for e in h.evidence))
+
+
 def build_tldr(result: RcaResult) -> str:
     counts = result.verdict_counts()
+    n_tables = len({f.target_table for f in result.findings})
     lines = [
-        f"# RCA TL;DR - recon `{result.recon_id}` ({result.dialect})",
+        f"# 🧭 RCA Summary — recon `{result.recon_id}`",
         "",
-        f"- Findings analyzed: **{len(result.findings)}**",
+        f"**{len(result.findings)} findings** across **{n_tables} tables** · source dialect: `{result.dialect}`",
+        "",
+        "| Verdict | Count |",
+        "| :-- | --: |",
     ]
-    for verdict, label in _VERDICT_LABEL.items():
-        n = counts.get(verdict.value, 0)
-        if n:
-            lines.append(f"- {label}: **{n}**")
+    for v in _VERDICT_ORDER:
+        sym, label, _ = _VERDICT[v]
+        lines.append(f"| {sym} {label} | {counts.get(v.value, 0)} |")
     lines.append("")
-    lines.append("## Headline root causes")
-    for f in sorted(result.findings, key=lambda x: (x.top_hypothesis.confidence if x.top_hypothesis else 0), reverse=True)[:10]:
+
+    by_verdict: dict[Verdict, list[Finding]] = {v: [] for v in _VERDICT_ORDER}
+    for f in result.findings:
         h = f.top_hypothesis
-        if not h:
+        if h:
+            by_verdict.setdefault(h.verdict, []).append(f)
+
+    for v in _VERDICT_ORDER:
+        group = sorted(by_verdict.get(v, []),
+                       key=lambda x: x.top_hypothesis.confidence if x.top_hypothesis else 0, reverse=True)
+        if not group:
             continue
-        loc = f"{f.target_table}" + (f".{f.column}" if f.column else "")
-        lines.append(
-            f"- `{loc}` -> **{_VERDICT_LABEL[h.verdict]}** / {h.category.value} "
-            f"(confidence {h.confidence:.0%}): {h.rationale}"
-        )
+        sym, label, action = _VERDICT[v]
+        lines += ["", f"## {sym} {label} — _{action}_", "",
+                  "| Location | Category | Conf. | ✔ | Root cause |",
+                  "| :-- | :-- | :-- | :-: | :-- |"]
+        for f in group:
+            h = f.top_hypothesis
+            check = "✓" if _confirmed(f) else "·"
+            rationale = (h.rationale or "").replace("\n", " ").strip()
+            if len(rationale) > 110:
+                rationale = rationale[:107] + "..."
+            lines.append(
+                f"| `{_loc(f)}` | {_cat_label(h.category)} | {h.confidence:.0%} | {check} | {rationale} |"
+            )
     return "\n".join(lines)
 
 
@@ -60,48 +115,63 @@ def _md_cell(text: str) -> dict[str, Any]:
 
 
 def _code_cell(code: str) -> dict[str, Any]:
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": code.splitlines(keepends=True),
-    }
+    return {"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [],
+            "source": code.splitlines(keepends=True)}
 
 
 def _finding_section(f: Finding) -> list[dict[str, Any]]:
     h = f.top_hypothesis
-    loc = f"{f.target_table}" + (f".{f.column}" if f.column else "")
-    header = [f"## {loc}", "", f"- Recon type: `{f.recon_type.value}`", f"- Mismatches: {f.mismatch_count}"]
+    sym, label, action = _VERDICT.get(h.verdict, ("•", "?", "")) if h else ("•", "?", "")
+    header = [f"### {sym} `{_loc(f)}` — {label}", ""]
     if h:
         header += [
-            f"- **Verdict**: {_VERDICT_LABEL[h.verdict]}",
-            f"- Category: `{h.category.value}` (confidence {h.confidence:.0%})",
-            f"- Rationale: {h.rationale}",
-            f"- Recommended owner: {h.recommended_owner}",
-            f"- Remediation: {h.remediation}" if h.remediation else "",
+            f"- **Category**: {_cat_label(h.category)}  ·  **Confidence**: {h.confidence:.0%}"
+            f"  ·  **Owner**: {h.recommended_owner or '—'}",
+            f"- **Signal**: recon `{f.recon_type.value}`, {f.mismatch_count} of "
+            f"{f.total_count or '?'} rows",
+            f"- **Root cause**: {h.rationale}",
         ]
+        if h.remediation:
+            header.append(f"- **Fix**: {h.remediation.strip()}")
+        for e in h.evidence:
+            if e.label == "drilldown":
+                header.append(f"- **Evidence**: {e.detail}")
+
     samples = [
-        f"  - keys={s.keys} source={s.source_value!r} target={s.target_value!r}"
-        for s in f.samples[:5]
+        f"  - `{ {k: v for k, v in list(s.keys.items())[:3]} }` "
+        f"source={s.source_value!r} → target={s.target_value!r}"
+        for s in f.samples[:4] if s.column
     ]
     if samples:
         header += ["", "Sample differences:", *samples]
+
+    # Pre-fill the confirming query so the reader can re-run it live.
+    query = ""
+    if h and h.evidence and h.evidence[0].label == "drilldown" and h.evidence[0].query:
+        query = h.evidence[0].query
     live = _code_cell(
-        f"# Live drill-down for {loc}: run to confirm the hypothesis, then\n"
-        f"# refine and re-run until the verdict is confident.\n"
-        f"# spark.sql(\"SELECT ... FROM {f.source_table} ... \").display()"
+        f"# Re-run to confirm / drill deeper for {_loc(f)}\n"
+        + (f'spark.sql("""{query}""").display()' if query
+           else f'# spark.sql("SELECT * FROM {f.target_table} LIMIT 20").display()')
     )
     return [_md_cell("\n".join(x for x in header if x is not None)), live]
 
 
 def build_notebook(result: RcaResult) -> dict[str, Any]:
-    cells = [_md_cell(build_tldr(result)), _md_cell("---\n# Findings")]
-    for f in result.findings:
+    cells = [
+        _md_cell(build_tldr(result)),
+        _md_cell("---\n# 🔬 Findings & evidence\n\nEach section shows the concluded verdict "
+                 "and the query that confirms it. Re-run any cell to drill deeper."),
+    ]
+    order = {v: i for i, v in enumerate(_VERDICT_ORDER)}
+    for f in sorted(result.findings,
+                    key=lambda x: (order.get(x.top_hypothesis.verdict, 9) if x.top_hypothesis else 9,
+                                   -(x.top_hypothesis.confidence if x.top_hypothesis else 0))):
         cells.extend(_finding_section(f))
     return {
         "cells": cells,
-        "metadata": {"language_info": {"name": "python"}, "kernelspec": {"name": "python3", "display_name": "Python 3"}},
+        "metadata": {"language_info": {"name": "python"},
+                     "kernelspec": {"name": "python3", "display_name": "Python 3"}},
         "nbformat": 4,
         "nbformat_minor": 5,
     }

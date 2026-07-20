@@ -10,8 +10,6 @@ from __future__ import annotations
 import argparse
 import sys
 
-from rca_engine.classify import classify_all
-from rca_engine.models import RcaResult
 from rca_engine.report import build_tldr, write_json, write_notebook
 
 
@@ -39,15 +37,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-path", default="rca_output")
     parser.add_argument("--profile", default=None)
     parser.add_argument("--warehouse-id", default=None)
+    parser.add_argument("--no-drilldown", action="store_true",
+                        help="Skip live confirmation queries (deterministic pass only).")
     args = parser.parse_args(argv)
 
     runner = _build_runner(args.profile, args.warehouse_id)
 
-    from rca_engine.ingest import ingest
+    from rca_engine.analyze import analyze
 
-    findings = ingest(runner, args.recon_id, args.recon_catalog, args.recon_schema)
-    findings = classify_all(findings, dialect=args.dialect)
-    result = RcaResult(recon_id=args.recon_id, dialect=args.dialect, findings=findings)
+    result = analyze(
+        runner, args.recon_id, args.recon_catalog, args.recon_schema,
+        dialect=args.dialect, drilldown=not args.no_drilldown,
+    )
 
     write_json(result, f"{args.output_path}.json")
     write_notebook(result, f"{args.output_path}.ipynb")

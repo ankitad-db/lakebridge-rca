@@ -19,9 +19,7 @@ from typing import Any
 
 import yaml
 
-from rca_engine.classify import classify_all
-from rca_engine.ingest import ingest
-from rca_engine.models import RcaResult
+from rca_engine.analyze import analyze
 from rca_engine.report import build_tldr, write_json, write_notebook
 from rca_engine.runners import SparkQueryRunner
 
@@ -34,12 +32,13 @@ def _load_config() -> dict[str, Any]:
     return {"recon_catalog": "fevm_ps_dr_us_east_2_catalog", "recon_schema": "reconcile", "dialect": "snowflake"}
 
 
-def run(recon_id: str, spark: Any, out_dir: str = "/tmp") -> RcaResult:
+def run(recon_id: str, spark: Any, out_dir: str = "/tmp"):
     cfg = _load_config()
     runner = SparkQueryRunner(spark)
-    findings = ingest(runner, recon_id, cfg["recon_catalog"], cfg["recon_schema"])
-    findings = classify_all(findings, dialect=cfg.get("dialect", "snowflake"))
-    result = RcaResult(recon_id=recon_id, dialect=cfg.get("dialect", "snowflake"), findings=findings)
+    result = analyze(
+        runner, recon_id, cfg["recon_catalog"], cfg["recon_schema"],
+        dialect=cfg.get("dialect", "snowflake"), drilldown=True,
+    )
 
     base = os.path.join(out_dir, f"rca_{recon_id}")
     write_json(result, f"{base}.json")
