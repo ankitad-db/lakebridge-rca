@@ -14,11 +14,14 @@ dialect: snowflake
 warehouse_id: 4c79c6902dd2bbc2
 
 # Where to write the generated RCA notebook + JSON. The user can override this per
-# run (just tell the skill where to save). Examples:
-#   /tmp                              (driver-local, default)
-#   /Volumes/<catalog>/<schema>/<vol> (Unity Catalog volume, durable)
-#   /Workspace/Users/<you>/rca        (workspace files)
-output_dir: /tmp
+# run (just tell the skill where to save).
+#   - A bare folder name (default) is created under the current user's workspace
+#     home: /Workspace/Users/<current_user>/<folder>  (durable, per-user).
+#   - An absolute path is used as-is, e.g.:
+#       /Volumes/<catalog>/<schema>/<vol>   (Unity Catalog volume)
+#       /Workspace/Shared/rca               (shared workspace folder)
+#       /tmp                                (driver-local, ephemeral)
+output_dir: rca_notebooks
 
 # The deterministic engine (rca_engine) is vendored inside this skill folder, so
 # it imports directly from the workspace — no external package install is needed.

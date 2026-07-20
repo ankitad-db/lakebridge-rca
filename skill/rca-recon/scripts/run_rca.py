@@ -37,19 +37,38 @@ def _load_config() -> dict[str, Any]:
         if candidate.exists():
             return yaml.safe_load(candidate.read_text()) or {}
     return {"recon_catalog": "fevm_ps_dr_us_east_2_catalog", "recon_schema": "reconcile",
-            "dialect": "snowflake", "output_dir": "/tmp"}
+            "dialect": "snowflake", "output_dir": "rca_notebooks"}
+
+
+def _resolve_out_dir(out_dir: str, spark: Any) -> str:
+    """Resolve where to write the RCA notebook.
+
+    Absolute paths (``/Volumes/...``, ``/Workspace/...``, ``/tmp``) are used as-is.
+    A bare folder name (the default) is placed under the current user's workspace
+    home: ``/Workspace/Users/<current_user>/<folder>`` — a durable, per-user spot.
+    """
+
+    if out_dir.startswith("/"):
+        return out_dir
+    folder = out_dir or "rca_notebooks"
+    try:
+        user = spark.sql("SELECT current_user() AS u").collect()[0][0]
+        return f"/Workspace/Users/{user}/{folder}"
+    except Exception:
+        return f"/tmp/{folder}"
 
 
 def run(recon_id: str, spark: Any, out_dir: str | None = None):
     """Run the end-to-end RCA and write artifacts.
 
     ``out_dir`` (where the notebook + JSON are written) is resolved in priority
-    order: explicit argument > ``output_dir`` in config.yml > ``/tmp``. The user
-    can point it at a UC Volume or workspace path for a durable copy.
+    order: explicit argument > ``output_dir`` in config.yml > ``rca_notebooks``.
+    A bare folder name resolves under the user's ``/Workspace/Users`` home; pass an
+    absolute path (e.g. a UC Volume) to override.
     """
 
     cfg = _load_config()
-    out_dir = out_dir or cfg.get("output_dir") or "/tmp"
+    out_dir = _resolve_out_dir(out_dir or cfg.get("output_dir") or "rca_notebooks", spark)
     os.makedirs(out_dir, exist_ok=True)
 
     runner = SparkQueryRunner(spark)

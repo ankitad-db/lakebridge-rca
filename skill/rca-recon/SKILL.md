@@ -23,8 +23,10 @@ user to approve it before running all cells** (see Workflow step 5).
 - **Required (from the user):** `recon_id` — the Lakebridge reconcile run id.
 - **Optional (from the user):** where to save the RCA notebook. If the user gives a
   location (a UC Volume like `/Volumes/cat/sch/vol`, a workspace path, or any dir),
-  use it; otherwise fall back to `output_dir` in `config.yml` (default `/tmp`). It is
-  fine to ask "Where should I save the RCA notebook?" if the user hasn't said.
+  use it; otherwise fall back to `output_dir` in `config.yml`. The default is a bare
+  folder name (`rca_notebooks`) that resolves under the user's workspace home
+  (`/Workspace/Users/<current_user>/rca_notebooks`). It is fine to ask "Where should
+  I save the RCA notebook?" if the user hasn't said.
 - **From `config.yml` (this skill folder):** `recon_catalog`, `recon_schema`,
   `dialect` (the original source EDW dialect, e.g. `snowflake`), `output_dir`, and an
   optional `warehouse_id`. Read it with a small YAML load; do not ask for these.
@@ -71,7 +73,15 @@ from rca_engine.report import build_tldr, write_json, write_notebook
 import os
 cfg = yaml.safe_load(open("config.yml"))            # relative to this skill folder
 recon_id = "<RECON_ID_FROM_USER>"
-out_dir = "<USER_LOCATION_OR_NONE>" or cfg.get("output_dir", "/tmp")
+
+# Resolve save location: absolute path used as-is; a bare folder name goes under
+# the user's workspace home. Prefer scripts/run_rca.py which does this for you.
+raw = "<USER_LOCATION_OR_NONE>" or cfg.get("output_dir", "rca_notebooks")
+if raw.startswith("/"):
+    out_dir = raw
+else:
+    user = spark.sql("SELECT current_user() AS u").collect()[0][0]
+    out_dir = f"/Workspace/Users/{user}/{raw}"
 os.makedirs(out_dir, exist_ok=True)
 
 result = analyze(
@@ -84,7 +94,8 @@ write_notebook(result, os.path.join(out_dir, f"rca_{recon_id}.ipynb"))  # symbol
 ```
 
 `scripts/run_rca.py` also accepts the location: `run(recon_id, spark, out_dir=...)`
-(priority: explicit arg > `config.output_dir` > `/tmp`).
+(priority: explicit arg > `config.output_dir` > `rca_notebooks` under the user's
+workspace home).
 
 `scripts/run_rca.py` wraps exactly this. See `references/taxonomy.md` for how
 probes map to categories.
