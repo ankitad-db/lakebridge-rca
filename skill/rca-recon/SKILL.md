@@ -15,7 +15,8 @@ description: >-
 Turn a Lakebridge `reconcile` result into a finished root-cause analysis. You run
 **live** inside the workspace: generate a notebook, execute drill-down queries,
 refine hypotheses, and keep going until every finding has a confident verdict or
-is explicitly flagged **needs review**.
+is explicitly flagged **needs review**. After the notebook is generated, **ask the
+user to approve it before running all cells** (see Workflow step 5).
 
 ## Input contract
 
@@ -108,6 +109,19 @@ resolved. Do **not** stop if anything is unresolved.
   its evidence, and sample diffs. Re-run any query cell to drill deeper.
 - End with the **TL;DR** from `build_tldr(result)`: counts by verdict, headline root
   causes, and a clear "what to fix vs. what to route to the data owner" list.
+
+### 5. Confirm with the user, then run all cells
+- After writing the notebook, **pause and ask the user for approval** before
+  executing it. Show the TL;DR and the notebook path, then ask explicitly, e.g.:
+  _"The RCA notebook is generated at `/tmp/rca_<recon_id>.ipynb`. Are the findings
+  and proposed fixes acceptable? Reply **yes** to run all cells, or tell me what to
+  adjust."_
+- **Do not run the notebook until the user confirms.** If they request changes
+  (reclassify a finding, add a drill-down, tweak a fix/owner), apply them, regenerate
+  the notebook, and ask again.
+- **On approval, run all cells** top-to-bottom so every confirming query executes
+  live and the outputs are captured in the notebook. Then report that the run
+  completed and restate the final verdict counts.
 
 ## Rules
 
