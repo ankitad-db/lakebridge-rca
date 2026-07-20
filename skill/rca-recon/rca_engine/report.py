@@ -261,6 +261,23 @@ def _signal(f: Finding) -> str:
     return f"recon `{rt}`, {f.mismatch_count} of {total} rows"
 
 
+def _provenance(h) -> str:
+    """Compact list of which independent inputs confirmed this finding."""
+
+    used = ["📊 recon data"]  # every finding starts from the recon output
+    details = [(e.label, (e.detail or "").lower()) for e in h.evidence]
+    if any(lbl == "drilldown" for lbl, _ in details):
+        used.append("🔎 live query")
+    if any(lbl == "code" and any(w in d for w in ("derivation", "load filter", "generated", "passthrough"))
+           for lbl, d in details):
+        used.append("🧩 target code")
+    if any(lbl == "code" and ("declared" in d or "session/zoned" in d) for lbl, d in details):
+        used.append("🧬 source types")
+    if any(lbl == "transpile" for lbl, _ in details):
+        used.append("📄 transpile report")
+    return " · ".join(used)
+
+
 def _finding_section(f: Finding) -> list[dict[str, Any]]:
     h = f.top_hypothesis
     sym, label, action = _VERDICT.get(h.verdict, ("•", "?", "")) if h else ("•", "?", "")
@@ -279,6 +296,9 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
         for e in h.evidence:
             if e.label in _ev_label:
                 header.append(f"- **{_ev_label[e.label]}**: {e.detail}")
+        prov = _provenance(h)
+        if prov:
+            header.append(f"- **Inputs used**: {prov}")
 
     samples = [
         f"  - `{ {k: v for k, v in list(s.keys.items())[:3]} }` "

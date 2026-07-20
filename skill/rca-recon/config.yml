@@ -36,3 +36,14 @@ output_dir: rca_notebooks
 # transpiled_output_dir: /Workspace/Users/<you>/lakebridge/transpiled
 # source_scripts_dir: /Workspace/Users/<you>/lakebridge/source_sql
 # transpile_error_file: /Workspace/Users/<you>/lakebridge/transpile_errors.log
+
+# Optional: explicit PER-TABLE script manifest (most robust — removes any file<->table
+# ambiguity of the folder scans above). Point each target table at its own source and
+# migrated (target) SQL. Overrides the folder scans for the tables listed.
+# tables:
+#   - target: fact_orders
+#     source: fact_orders                 # optional; defaults to target
+#     source_script: .../fact_orders_snowflake.sql   # declared source types
+#     target_script: .../fact_orders_databricks.sql  # migrated transform
+#     join_keys: [order_id]               # optional override
+#     date_column: order_ts               # optional override

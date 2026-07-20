@@ -271,12 +271,75 @@ def parse_transpile_errors(path: str | Path) -> list[TranspileIssue]:
 # --------------------------------------------------------------------------- #
 # unified builder
 # --------------------------------------------------------------------------- #
+def _types_from_source_file(path: str | Path, table: str, read: str) -> dict[str, str]:
+    d = parse_source_dir(path, read=read)
+    if _short(table) in d:
+        return d[_short(table)]
+    return next(iter(d.values())) if len(d) == 1 else {}
+
+
+def _mapping_from_target_file(path: str | Path, table: str) -> Optional[TableMapping]:
+    d = parse_transpiled_dir(path)
+    if _short(table) in d:
+        return d[_short(table)]
+    return next(iter(d.values())) if len(d) == 1 else None
+
+
+def apply_table_manifest(
+    mapping: dict[str, TableMapping],
+    manifest: list[dict],
+    source_dialect: str = "snowflake",
+) -> dict[str, TableMapping]:
+    """Overlay an explicit per-table manifest onto ``mapping``.
+
+    Each entry ties one target table to its own source/target script (and optional
+    key/date/filter overrides), removing any file->table ambiguity of folder scans::
+
+        tables:
+          - target: fact_orders
+            source: fact_orders            # optional; defaults to target
+            source_script: .../fact_orders_source.sql
+            target_script: .../fact_orders_target.sql
+            join_keys: [order_id]          # optional override
+            date_column: order_ts          # optional override
+    """
+
+    for entry in manifest or []:
+        tgt = entry.get("target") or entry.get("target_name")
+        if not tgt:
+            continue
+        k = _short(tgt)
+        m = mapping.setdefault(k, TableMapping(target_table=tgt))
+        m.target_table = m.target_table or tgt
+        if entry.get("source") or entry.get("source_name"):
+            m.source_table = entry.get("source") or entry.get("source_name")
+        m.source_table = m.source_table or tgt
+        if entry.get("join_keys"):
+            m.join_keys = list(entry["join_keys"])
+        if entry.get("date_column"):
+            m.date_column = entry["date_column"]
+        if entry.get("target_filter"):
+            m.target_filter = entry["target_filter"]
+        if entry.get("target_script"):
+            tm2 = _mapping_from_target_file(entry["target_script"], tgt)
+            if tm2 is not None:
+                m.transforms.update(tm2.transforms)
+                m.source_table = m.source_table or tm2.source_table
+                m.target_filter = m.target_filter or tm2.target_filter
+        if entry.get("source_script"):
+            types = _types_from_source_file(entry["source_script"], m.source_table or tgt, source_dialect)
+            if types:
+                m.source_types = types
+    return mapping
+
+
 def build_mapping(
     recon_config_path: str | Path | None = None,
     transpiled_output: str | Path | None = None,
     transpile_error_file: str | Path | None = None,
     source_scripts: str | Path | None = None,
     source_dialect: str = "snowflake",
+    table_manifest: list[dict] | None = None,
 ) -> dict[str, TableMapping]:
     """Merge recon config + source DDL + transpiled SQL + transpile errors into
     per-table mappings, keyed by the short (unqualified) target table name.
@@ -284,7 +347,9 @@ def build_mapping(
     ``source_scripts`` = original-dialect DDL (declared source types).
     ``transpiled_output`` = the deployed/transpiled target scripts.
     ``recon_config_path`` = the source<->target mapping (keys, columns, filters).
-    All optional; each artifact simply adds more confirmation.
+    ``table_manifest`` = explicit per-table source/target script paths (overrides the
+    folder scans; use when file<->table names are ambiguous). All optional; each
+    artifact simply adds more confirmation.
     """
 
     mapping: dict[str, TableMapping] = {}
@@ -310,6 +375,8 @@ def build_mapping(
             mapping.setdefault(k, TableMapping(source_table=k, target_table=k)).source_types = (
                 mapping[k].source_types or types
             )
+    if table_manifest:
+        apply_table_manifest(mapping, table_manifest, source_dialect=source_dialect)
     if transpile_error_file:
         issues = parse_transpile_errors(transpile_error_file)
         for m in mapping.values():

@@ -49,17 +49,27 @@ def main(argv: list[str] | None = None) -> int:
                         help="Lakebridge transpile error file (--error-file-path output).")
     parser.add_argument("--source-scripts", default=None,
                         help="Folder/file of original source DDL (declared source types).")
+    parser.add_argument("--table-manifest", default=None,
+                        help="YAML/JSON with an explicit per-table source/target script mapping.")
     args = parser.parse_args(argv)
 
     runner = _build_runner(args.profile, args.warehouse_id)
 
     from rca_engine.analyze import analyze
 
+    manifest = None
+    if args.table_manifest:
+        import yaml
+        loaded = yaml.safe_load(open(args.table_manifest))
+        manifest = loaded.get("tables", loaded) if isinstance(loaded, dict) else loaded
+
     mapping = None
-    if args.recon_config or args.transpiled_output or args.transpile_errors or args.source_scripts:
+    if any((args.recon_config, args.transpiled_output, args.transpile_errors,
+            args.source_scripts, manifest)):
         from rca_engine.lakebridge import build_mapping
         mapping = build_mapping(args.recon_config, args.transpiled_output, args.transpile_errors,
-                                source_scripts=args.source_scripts, source_dialect=args.dialect)
+                                source_scripts=args.source_scripts, source_dialect=args.dialect,
+                                table_manifest=manifest)
 
     result = analyze(
         runner, args.recon_id, args.recon_catalog, args.recon_schema,

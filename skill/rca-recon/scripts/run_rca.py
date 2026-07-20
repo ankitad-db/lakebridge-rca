@@ -74,7 +74,7 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None):
     # Optionally load Lakebridge transpile + recon-config artifacts for code-aware RCA.
     mapping = None
     if any(cfg.get(k) for k in ("recon_config_path", "transpiled_output_dir",
-                                "transpile_error_file", "source_scripts_dir")):
+                                "transpile_error_file", "source_scripts_dir", "tables")):
         from rca_engine.lakebridge import build_mapping
         mapping = build_mapping(
             cfg.get("recon_config_path"),
@@ -82,6 +82,7 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None):
             cfg.get("transpile_error_file"),
             source_scripts=cfg.get("source_scripts_dir"),
             source_dialect=cfg.get("dialect", "snowflake"),
+            table_manifest=cfg.get("tables"),
         )
 
     runner = SparkQueryRunner(spark)
