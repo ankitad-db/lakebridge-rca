@@ -44,9 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recon-config", default=None,
                         help="Lakebridge reconcile config JSON (join keys, column mapping, filters).")
     parser.add_argument("--transpiled-output", default=None,
-                        help="Folder/file of transpiled Databricks SQL (for code-level RCA).")
+                        help="Folder/file of transpiled/target Databricks SQL (for code-level RCA).")
     parser.add_argument("--transpile-errors", default=None,
                         help="Lakebridge transpile error file (--error-file-path output).")
+    parser.add_argument("--source-scripts", default=None,
+                        help="Folder/file of original source DDL (declared source types).")
     args = parser.parse_args(argv)
 
     runner = _build_runner(args.profile, args.warehouse_id)
@@ -54,9 +56,10 @@ def main(argv: list[str] | None = None) -> int:
     from rca_engine.analyze import analyze
 
     mapping = None
-    if args.recon_config or args.transpiled_output or args.transpile_errors:
+    if args.recon_config or args.transpiled_output or args.transpile_errors or args.source_scripts:
         from rca_engine.lakebridge import build_mapping
-        mapping = build_mapping(args.recon_config, args.transpiled_output, args.transpile_errors)
+        mapping = build_mapping(args.recon_config, args.transpiled_output, args.transpile_errors,
+                                source_scripts=args.source_scripts, source_dialect=args.dialect)
 
     result = analyze(
         runner, args.recon_id, args.recon_catalog, args.recon_schema,

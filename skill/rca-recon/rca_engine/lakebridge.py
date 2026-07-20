@@ -59,12 +59,16 @@ class TableMapping:
     date_column: Optional[str] = None
     column_map: dict[str, str] = field(default_factory=dict)     # source_col -> target_col
     transforms: dict[str, ColumnTransform] = field(default_factory=dict)  # by target column
+    source_types: dict[str, str] = field(default_factory=dict)   # source col (lower) -> declared type
     source_filter: str = ""
     target_filter: str = ""
     transpile_issues: list[TranspileIssue] = field(default_factory=list)
 
     def transform_for(self, target_col: str) -> Optional[ColumnTransform]:
         return self.transforms.get(target_col)
+
+    def source_type_of(self, col: str) -> Optional[str]:
+        return self.source_types.get(col.lower()) if col else None
 
 
 def _short(name: str) -> str:
@@ -173,6 +177,55 @@ def parse_transpiled_sql(sql_text: str, read: str = "databricks") -> dict[str, T
     return out
 
 
+# --------------------------------------------------------------------------- #
+# source scripts (original-dialect DDL) -> declared column types
+# --------------------------------------------------------------------------- #
+def parse_source_ddl(sql_text: str, read: str = "snowflake") -> dict[str, dict[str, str]]:
+    """Extract per-table declared column types from source DDL (CREATE TABLE).
+
+    Returns {short_table_name: {column_lower: declared_type}}. Used to confirm
+    type/precision and timezone findings from the *source* schema (e.g. a source
+    NUMBER(18,4) migrated to DECIMAL(18,2) is a real scale loss).
+    """
+
+    if not _HAS_SQLGLOT or not sql_text.strip():
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    try:
+        statements = sqlglot.parse(sql_text, read=read)
+    except Exception:
+        return {}
+    for stmt in statements:
+        if not isinstance(stmt, exp.Create):
+            continue
+        tbl = stmt.find(exp.Table)
+        schema = stmt.this if isinstance(stmt.this, exp.Schema) else None
+        if tbl is None or schema is None:
+            continue
+        cols: dict[str, str] = {}
+        for cdef in schema.find_all(exp.ColumnDef):
+            try:
+                cols[cdef.name.lower()] = cdef.args["kind"].sql(dialect=read).upper()
+            except Exception:
+                continue
+        if cols:
+            out[_short(tbl.name)] = cols
+    return out
+
+
+def parse_source_dir(path: str | Path, read: str = "snowflake") -> dict[str, dict[str, str]]:
+    p = Path(path)
+    files = [p] if p.is_file() else list(p.rglob("*.sql")) if p.exists() else []
+    merged: dict[str, dict[str, str]] = {}
+    for f in files:
+        try:
+            for k, cols in parse_source_ddl(f.read_text(), read=read).items():
+                merged.setdefault(k, {}).update(cols)
+        except Exception:
+            continue
+    return merged
+
+
 def parse_transpiled_dir(path: str | Path) -> dict[str, TableMapping]:
     p = Path(path)
     files = [p] if p.is_file() else list(p.rglob("*.sql")) if p.exists() else []
@@ -222,10 +275,16 @@ def build_mapping(
     recon_config_path: str | Path | None = None,
     transpiled_output: str | Path | None = None,
     transpile_error_file: str | Path | None = None,
+    source_scripts: str | Path | None = None,
+    source_dialect: str = "snowflake",
 ) -> dict[str, TableMapping]:
-    """Merge recon config + transpiled SQL + transpile errors into per-table mappings.
+    """Merge recon config + source DDL + transpiled SQL + transpile errors into
+    per-table mappings, keyed by the short (unqualified) target table name.
 
-    Keyed by the short (unqualified) target table name.
+    ``source_scripts`` = original-dialect DDL (declared source types).
+    ``transpiled_output`` = the deployed/transpiled target scripts.
+    ``recon_config_path`` = the source<->target mapping (keys, columns, filters).
+    All optional; each artifact simply adds more confirmation.
     """
 
     mapping: dict[str, TableMapping] = {}
@@ -239,6 +298,18 @@ def build_mapping(
                 mapping[k].target_filter = mapping[k].target_filter or m.target_filter
             else:
                 mapping[k] = m
+    if source_scripts:
+        src_types = parse_source_dir(source_scripts, read=source_dialect)
+        for m in mapping.values():
+            types = src_types.get(_short(m.source_table)) or src_types.get(_short(m.target_table))
+            if types:
+                m.source_types = types
+        # tables present only in source scripts (not in recon config / transpiled) —
+        # keep them keyed by their own short name so type info is still available.
+        for k, types in src_types.items():
+            mapping.setdefault(k, TableMapping(source_table=k, target_table=k)).source_types = (
+                mapping[k].source_types or types
+            )
     if transpile_error_file:
         issues = parse_transpile_errors(transpile_error_file)
         for m in mapping.values():

@@ -37,15 +37,24 @@ translated code (not just from the data). See the optional inputs below.
 - **From `config.yml` (this skill folder):** `recon_catalog`, `recon_schema`,
   `dialect` (the original source EDW dialect, e.g. `snowflake`), `output_dir`, and an
   optional `warehouse_id`. Read it with a small YAML load; do not ask for these.
-- **Optional (code-aware RCA) — Lakebridge artifacts, from `config.yml`:**
-  `recon_config_path` (reconcile config JSON → exact join keys, column mapping,
-  filters), `transpiled_output_dir` (folder from `lakebridge transpile --output-folder`
-  → per-column transforms), and `transpile_error_file` (from `transpile
-  --error-file-path` → Lakebridge's own flagged/failed translations). When present, the
-  engine confirms causes from the translated code (e.g. a `MAKE_INTERVAL` in the target
-  column proves a tz shift; a `WHERE order_id <= 480` filter proves a watermark).
-  Requires `sqlglot` (`pip install sqlglot`); if absent, RCA degrades gracefully to
-  data-driven mode. Omit all three for a pure data-driven run.
+- **Optional (code-aware RCA) — from `config.yml`:** the RCA confirms causes from the
+  code, not just the data, using any subset of:
+  - `recon_config_path` — reconcile config JSON = **the mapping** (exact join keys,
+    column mapping, filters). Reused as-is; no separate hand-written mapping file needed.
+  - `transpiled_output_dir` — **target scripts**: the deployed/transpiled Databricks SQL
+    (in future, `lakebridge transpile --output-folder`) → per-column transforms
+    (e.g. `MAKE_INTERVAL` proves a tz shift; `WHERE order_id <= 480` proves a watermark;
+    a target-generated column not carried from source is pulled to needs-review).
+  - `source_scripts_dir` — **source scripts**: original-dialect DDL → declared source
+    types (e.g. source `NUMBER(18,4)` vs target `DECIMAL(18,2)` = confirmed scale loss;
+    `TIMESTAMP_LTZ` confirms a tz normalization is required).
+  - `transpile_error_file` — Lakebridge `transpile --error-file-path` report → its own
+    flagged/failed translations, cited as evidence.
+
+  Each finding can thus be cross-confirmed by three independent sources (recon data +
+  target code + source types). Requires `sqlglot` (`pip install sqlglot`) for the
+  script parsing; if absent, RCA degrades gracefully to data-driven mode. Omit all for a
+  pure data-driven run.
 
 ## Verdict taxonomy (this is the field the human acts on)
 

@@ -6,6 +6,7 @@ on top to raise confidence or resolve NEEDS_REVIEW findings.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 from rca_engine.knowledge import KnowledgeBase, load_kb
@@ -180,6 +181,41 @@ def _short(name: str) -> str:
     return name.split(".")[-1].strip("`").lower() if name else ""
 
 
+_SCALE_RE = re.compile(r"\(\s*\d+\s*,\s*(\d+)\s*\)")
+
+
+def _scale(type_or_expr: str | None) -> int | None:
+    """Numeric scale from a type string / cast expression, e.g. NUMBER(18,4) -> 4."""
+
+    if not type_or_expr:
+        return None
+    m = _SCALE_RE.search(type_or_expr)
+    return int(m.group(1)) if m else None
+
+
+def _apply_source_type(f: Finding, top, tm, ct) -> None:
+    """Confirm a finding from the *declared source type* (from source DDL)."""
+
+    src_type = tm.source_type_of(f.column) if f.column else None
+    if not src_type:
+        return
+    cat = top.category
+    if cat in (RootCauseCategory.TYPE_PRECISION, RootCauseCategory.TRANSPILATION):
+        ss, ts = _scale(src_type), _scale(ct.expr if ct else None)
+        msg = f"Source `{f.column}` is declared `{src_type}`."
+        if ss is not None and ts is not None and ts < ss:
+            msg += f" Target casts to scale {ts} (from {ss}) — confirmed precision/scale loss."
+            top.confidence = round(min(0.99, max(top.confidence, 0.6) + 0.1), 2)
+        top.evidence.append(Evidence(label="code", detail=msg))
+    elif cat == RootCauseCategory.TIMEZONE and re.search(r"LTZ|TZ", src_type):
+        top.evidence.append(Evidence(
+            label="code",
+            detail=f"Source `{f.column}` is `{src_type}` (session/zoned timestamp) — confirms a "
+            f"timezone normalization is required on load.",
+        ))
+        top.confidence = round(min(0.99, max(top.confidence, 0.6) + 0.05), 2)
+
+
 def _code_correlation_pass(findings: list[Finding], mapping: dict) -> None:
     """Confirm/deny a mismatch's cause using the Lakebridge transpile artifacts.
 
@@ -199,6 +235,12 @@ def _code_correlation_pass(findings: list[Finding], mapping: dict) -> None:
         if f.recon_type == ReconType.COLUMN_MISMATCH and f.column:
             ct = tm.transform_for(f.column)
             if ct is None:
+                _apply_source_type(f, top, tm, ct)
+                for iss in tm.transpile_issues:
+                    top.evidence.append(Evidence(
+                        label="transpile",
+                        detail=f"Lakebridge transpile {iss.severity}/{iss.kind}: {iss.message}",
+                    ))
                 continue
             if ct.is_direct:
                 top.evidence.append(Evidence(
@@ -238,6 +280,7 @@ def _code_correlation_pass(findings: list[Finding], mapping: dict) -> None:
                         f"it from recon or add a tolerance) or a genuine defect (fix the "
                         f"transform to carry the source value)."
                     )
+            _apply_source_type(f, top, tm, ct)
             for iss in tm.transpile_issues:
                 top.evidence.append(Evidence(
                     label="transpile",
