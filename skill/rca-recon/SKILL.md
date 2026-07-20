@@ -126,14 +126,19 @@ resolved. Do **not** stop if anything is unresolved.
 
 ### 4. Produce the RCA notebook + conclusion
 - `write_notebook(result, os.path.join(out_dir, f"rca_{recon_id}.ipynb"))` emits a
-  symbol-coded report to the user-chosen `out_dir`:
-  a **TL;DR** table (counts by verdict) at the top, one section per finding
-  (category/confidence/owner, root cause, fix, the confirming query + its evidence,
-  sample diffs), and a closing **🧾 Conclusion & recommended actions** section
-  grouped by owner (fix-in-migration vs route-to-data-owner). Re-run any query cell
-  to drill deeper.
+  symbol-coded report to the user-chosen `out_dir`, structured to mirror Lakebridge:
+  1. **🧭 RCA Summary** — verdict counts (with meaning) for the whole `recon_id`.
+  2. **📋 Reconciliation overview** — one row per table pair showing schema,
+     row-level (missing in target / extra in target), mismatched columns, and a
+     verdict rollup — the same breakdown Lakebridge reports.
+  3. **🎯 Findings by verdict** — action tables (what to fix vs route).
+  4. **🔬 Findings & evidence** — grouped by table pair, ordered schema → row-level
+     → column-level; each finding has category/confidence/owner, root cause, fix,
+     the confirming query + its evidence, and sample diffs.
+  5. **🧾 Conclusion & recommended actions** — grouped by owner.
 - The markdown is rendered from the concluded result, so every verdict is already
-  backed by an executed drill-down query.
+  backed by an executed drill-down query, and per-column counts are reconciled to
+  the exact number of differing rows (recon `details` only stores a sample).
 
 ### 5. Confirm with the user, then run all cells
 - After writing the notebook, **pause and ask the user for approval** before
@@ -172,3 +177,43 @@ executed evidence must agree.
   must cite the query that supports it.
 - If a mismatch cannot be explained after drill-down, mark it **needs review** and
   say exactly which query/owner would resolve it. Do not guess.
+
+## Examples
+
+**Example 1 — full run from a recon id**
+- User: _"Run an RCA on Lakebridge reconcile `recon_id=0fe6...b747bf`."_
+- You: load `config.yml`, `run(recon_id, spark)`, print the TL;DR, save the notebook
+  under `/Workspace/Users/<user>/rca_notebooks/`, then ask for approval. On "yes",
+  run all cells and reconcile. Expected shape of the answer:
+  _"9 migration-induced, 3 genuine data differences, 1 benign. Fix in migration:
+  `fact_order_items.amount` (DECIMAL→DOUBLE scale loss), `fact_orders.order_ts`
+  (constant 5.5h tz offset), `agg_daily_sales.revenue` (ROUND diff)… Route to data
+  owner: `dim_customer.loyalty_tier` (NULL in source, populated in target)…"_
+
+**Example 2 — custom save location**
+- User: _"RCA recon `abc123` and save it to `/Volumes/main/rca/out`."_
+- You: pass `out_dir="/Volumes/main/rca/out"` (absolute → used as-is).
+
+**Example 3 — a genuine data difference (not a migration bug)**
+- Finding: `dim_customer.loyalty_tier` differs; drill-down `SELECT count(*) ... WHERE
+  loyalty_tier IS NULL` shows the source is NULL for those rows while the target is
+  populated. Verdict: **📊 Genuine data difference**, owner = data owner. Do **not**
+  file it as a migration defect.
+
+## Edge cases
+
+- **No mismatches**: recon is clean → report "no differences found for `recon_id`"; do
+  not fabricate findings.
+- **Sampled vs true counts**: recon `details` stores only a sample; trust `metrics`
+  for row-level counts and use the drill-down query's exact count for per-column
+  counts (the engine already reconciles this).
+- **`_null_recon_` sentinel**: Lakebridge writes `_null_recon_` for NULLs in details;
+  treat it as NULL (the engine's null probe already does).
+- **Aggregate/derived tables** (e.g. `agg_daily_sales`) have no 1:1 source row, so
+  join-key drill-downs may not apply — compare at the aggregated grain instead.
+- **Missing join keys**: if a finding has no usable key for a live query, fall back to
+  a grouped/`LIMIT` inspection and lower confidence accordingly.
+- **Large tables**: keep drill-down queries aggregate (counts/min/max), not full row
+  dumps, to stay within the warehouse budget.
+- **Unresolved after drill-down**: mark **needs review** with the exact next step;
+  never force a verdict.

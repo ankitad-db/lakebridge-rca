@@ -11,7 +11,7 @@ import dataclasses
 import json
 from typing import Any
 
-from rca_engine.models import Finding, RcaResult, RootCauseCategory, Verdict
+from rca_engine.models import Finding, RcaResult, ReconType, RootCauseCategory, Verdict
 
 # Verdict presentation (symbol + label + one-line action).
 _VERDICT = {
@@ -67,20 +67,60 @@ def _confirmed(f: Finding) -> bool:
     return bool(h and any(e.data and e.data.get("confirmed") for e in h.evidence))
 
 
+def _verdict_badges(findings: list[Finding]) -> str:
+    """Compact per-table verdict rollup, e.g. '🔧3 📊1'."""
+
+    tally: dict[Verdict, int] = {}
+    for f in findings:
+        if f.top_hypothesis:
+            tally[f.top_hypothesis.verdict] = tally.get(f.top_hypothesis.verdict, 0) + 1
+    parts = [f"{_VERDICT[v][0]}{tally[v]}" for v in _VERDICT_ORDER if tally.get(v)]
+    return " ".join(parts) or "—"
+
+
+def build_overview(result: RcaResult) -> str:
+    """Per-table matrix mirroring how Lakebridge reconcile reports each table pair:
+    schema, row-level (missing both directions), and column-level mismatches."""
+
+    by_table: dict[str, list[Finding]] = {}
+    for f in result.findings:
+        by_table.setdefault(f.target_table, []).append(f)
+
+    lines = ["## 📋 Reconciliation overview (per table pair)", "",
+             "| Target table | Schema | ➖ Missing in target | ➕ Extra in target | 🔤 Mismatched columns | Verdicts |",
+             "| :-- | :-: | --: | --: | :-- | :-- |"]
+    for table in sorted(by_table):
+        fs = by_table[table]
+        name = table.split(".")[-1]
+        schema = next((x for x in fs if x.recon_type == ReconType.SCHEMA), None)
+        schema_cell = f"⚠️ {schema.mismatch_count}" if schema else "✅"
+        miss_t = sum(x.mismatch_count for x in fs if x.recon_type == ReconType.MISSING_IN_TARGET)
+        miss_s = sum(x.mismatch_count for x in fs if x.recon_type == ReconType.MISSING_IN_SOURCE)
+        cols = [x.column for x in fs if x.recon_type == ReconType.COLUMN_MISMATCH and x.column]
+        cols_cell = f"{len(cols)} (`{'`, `'.join(cols)}`)" if cols else "0"
+        lines.append(
+            f"| `{name}` | {schema_cell} | {miss_t or '·'} | {miss_s or '·'} | {cols_cell} | {_verdict_badges(fs)} |"
+        )
+    return "\n".join(lines)
+
+
 def build_tldr(result: RcaResult) -> str:
     counts = result.verdict_counts()
     n_tables = len({f.target_table for f in result.findings})
     lines = [
         f"# 🧭 RCA Summary — recon `{result.recon_id}`",
         "",
-        f"**{len(result.findings)} findings** across **{n_tables} tables** · source dialect: `{result.dialect}`",
+        f"**{len(result.findings)} findings** across **{n_tables} table pair(s)** · "
+        f"source dialect: `{result.dialect}`",
         "",
-        "| Verdict | Count |",
-        "| :-- | --: |",
+        "| Verdict | Count | Meaning |",
+        "| :-- | --: | :-- |",
     ]
     for v in _VERDICT_ORDER:
-        sym, label, _ = _VERDICT[v]
-        lines.append(f"| {sym} {label} | {counts.get(v.value, 0)} |")
+        sym, label, action = _VERDICT[v]
+        lines.append(f"| {sym} {label} | {counts.get(v.value, 0)} | {action} |")
+    lines.append("")
+    lines.append(build_overview(result))
     lines.append("")
 
     by_verdict: dict[Verdict, list[Finding]] = {v: [] for v in _VERDICT_ORDER}
@@ -89,6 +129,7 @@ def build_tldr(result: RcaResult) -> str:
         if h:
             by_verdict.setdefault(h.verdict, []).append(f)
 
+    lines += ["", "## 🎯 Findings by verdict"]
     for v in _VERDICT_ORDER:
         group = sorted(by_verdict.get(v, []),
                        key=lambda x: x.top_hypothesis.confidence if x.top_hypothesis else 0, reverse=True)
@@ -223,17 +264,33 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
     return [_md_cell("\n".join(x for x in header if x is not None)), live]
 
 
+# Order findings within a table the way Lakebridge reports them.
+_RECON_ORDER = {
+    ReconType.SCHEMA: 0,
+    ReconType.MISSING_IN_TARGET: 1,
+    ReconType.MISSING_IN_SOURCE: 2,
+    ReconType.COLUMN_MISMATCH: 3,
+}
+
+
 def build_notebook(result: RcaResult) -> dict[str, Any]:
     cells = [
         _md_cell(build_tldr(result)),
-        _md_cell("---\n# 🔬 Findings & evidence\n\nEach section shows the concluded verdict "
-                 "and the query that confirms it. Re-run any cell to drill deeper."),
+        _md_cell("---\n# 🔬 Findings & evidence\n\nGrouped by table pair (as Lakebridge "
+                 "reports), then schema → row-level → column-level. Each finding shows the "
+                 "concluded verdict and the query that confirms it. Re-run any cell to drill deeper."),
     ]
-    order = {v: i for i, v in enumerate(_VERDICT_ORDER)}
-    for f in sorted(result.findings,
-                    key=lambda x: (order.get(x.top_hypothesis.verdict, 9) if x.top_hypothesis else 9,
-                                   -(x.top_hypothesis.confidence if x.top_hypothesis else 0))):
-        cells.extend(_finding_section(f))
+    by_table: dict[str, list[Finding]] = {}
+    for f in result.findings:
+        by_table.setdefault(f.target_table, []).append(f)
+
+    for table in sorted(by_table):
+        fs = sorted(by_table[table],
+                    key=lambda x: (_RECON_ORDER.get(x.recon_type, 9),
+                                   -(x.top_hypothesis.confidence if x.top_hypothesis else 0)))
+        cells.append(_md_cell(f"## 📦 `{table}`  \n_{_verdict_badges(fs)}  ·  {len(fs)} finding(s)_"))
+        for f in fs:
+            cells.extend(_finding_section(f))
     cells.append(_md_cell("---\n" + build_conclusion(result)))
     return {
         "cells": cells,
