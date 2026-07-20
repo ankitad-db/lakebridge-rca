@@ -166,6 +166,26 @@ def _code_cell(code: str) -> dict[str, Any]:
             "source": code.splitlines(keepends=True)}
 
 
+def _signal(f: Finding) -> str:
+    """Phrase the finding in Lakebridge recon terms (row-level vs column-level)."""
+
+    total = f.total_count or "?"
+    rt = f.recon_type.value
+    if rt == "column_mismatch":
+        s = f"**column-level** mismatch — `{f.column}` differs on {f.mismatch_count} of {total} rows"
+        abs_m = (f.metadata or {}).get("absolute_mismatch")
+        if abs_m:
+            s += f" (table had {abs_m} mismatched rows across all columns)"
+        return s
+    if rt == "missing_in_target":
+        return f"**row-level** — {f.mismatch_count} rows present in source but missing in target (of {total})"
+    if rt == "missing_in_source":
+        return f"**row-level** — {f.mismatch_count} rows present in target but not in source (of {total})"
+    if rt == "schema":
+        return f"**schema-level** — {f.mismatch_count} column datatype difference(s) reported by recon"
+    return f"recon `{rt}`, {f.mismatch_count} of {total} rows"
+
+
 def _finding_section(f: Finding) -> list[dict[str, Any]]:
     h = f.top_hypothesis
     sym, label, action = _VERDICT.get(h.verdict, ("•", "?", "")) if h else ("•", "?", "")
@@ -174,8 +194,7 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
         header += [
             f"- **Category**: {_cat_label(h.category)}  ·  **Confidence**: {h.confidence:.0%}"
             f"  ·  **Owner**: {h.recommended_owner or '—'}",
-            f"- **Signal**: recon `{f.recon_type.value}`, {f.mismatch_count} of "
-            f"{f.total_count or '?'} rows",
+            f"- **Signal**: {_signal(f)}",
             f"- **Root cause**: {h.rationale}",
         ]
         if h.remediation:

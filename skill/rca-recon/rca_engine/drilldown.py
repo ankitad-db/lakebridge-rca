@@ -202,6 +202,14 @@ def run_drilldown(findings: list[Finding], runner: QueryRunner) -> list[Finding]
 
         if ev is None:
             continue
+        # Align the per-column count with the exact number of differing rows the
+        # confirming query found (recon `details` only stores a capped sample, so
+        # the ingested sample count can under-report). Row-level counts already
+        # come straight from recon metrics and are left untouched.
+        if f.recon_type == ReconType.COLUMN_MISMATCH and ev.data and ev.data.get("n") is not None:
+            exact = int(_num(ev.data.get("n")))
+            if exact > 0:
+                f.mismatch_count = exact
         top = f.top_hypothesis
         if top is not None:
             top.evidence.insert(0, ev)
