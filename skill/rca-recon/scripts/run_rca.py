@@ -89,6 +89,7 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None):
     result = analyze(
         runner, recon_id, cfg["recon_catalog"], cfg["recon_schema"],
         dialect=cfg.get("dialect", "snowflake"), drilldown=True, mapping=mapping,
+        use_lineage=bool(cfg.get("use_uc_lineage", False)),
     )
 
     base = os.path.join(out_dir, f"rca_{recon_id}")

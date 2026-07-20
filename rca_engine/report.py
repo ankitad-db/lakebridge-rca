@@ -275,6 +275,8 @@ def _provenance(h) -> str:
         used.append("🧬 source types")
     if any(lbl == "transpile" for lbl, _ in details):
         used.append("📄 transpile report")
+    if any(lbl == "lineage" for lbl, _ in details):
+        used.append("🔗 UC lineage")
     return " · ".join(used)
 
 
@@ -292,7 +294,7 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
         if h.remediation:
             header.append(f"- **Fix**: {h.remediation.strip()}")
         _ev_label = {"drilldown": "Evidence (query)", "code": "Evidence (code)",
-                     "transpile": "Transpile report"}
+                     "transpile": "Transpile report", "lineage": "Evidence (lineage)"}
         for e in h.evidence:
             if e.label in _ev_label:
                 header.append(f"- **{_ev_label[e.label]}**: {e.detail}")

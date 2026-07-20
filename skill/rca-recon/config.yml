@@ -47,3 +47,10 @@ output_dir: rca_notebooks
 #     target_script: .../fact_orders_databricks.sql  # migrated transform
 #     join_keys: [order_id]               # optional override
 #     date_column: order_ts               # optional override
+
+# Optional: use Unity Catalog lineage (system.access.column_lineage / table_lineage)
+# as an extra evidence source — confirms a column's true upstream provenance and the
+# upstream tables feeding a target (helps locate where a volume/drift cause entered).
+# Requires lineage to have been captured for the target tables + query access; degrades
+# gracefully to nothing if unavailable. Off by default.
+use_uc_lineage: false

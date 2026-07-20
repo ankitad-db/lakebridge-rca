@@ -50,9 +50,17 @@ translated code (not just from the data). See the optional inputs below.
     `TIMESTAMP_LTZ` confirms a tz normalization is required).
   - `transpile_error_file` — Lakebridge `transpile --error-file-path` report → its own
     flagged/failed translations, cited as evidence.
+  - `tables:` — an explicit **per-table manifest** (`target`, `source_script`,
+    `target_script`, optional `join_keys`/`date_column`) that overrides the folder scans
+    when file↔table names are ambiguous. Most robust way to pass scripts.
+  - `use_uc_lineage: true` — attach **Unity Catalog lineage** evidence
+    (`system.access.column_lineage`/`table_lineage`): confirms a column's true upstream
+    provenance and the upstream tables feeding a target (helps locate where a
+    volume/drift cause entered). Degrades to nothing if lineage isn't captured.
 
-  Each finding can thus be cross-confirmed by three independent sources (recon data +
-  target code + source types). Requires `sqlglot` (`pip install sqlglot`) for the
+  Each finding is cross-confirmed by up to five independent sources (recon data +
+  target code + source types + UC lineage + live query), shown per finding as
+  **"Inputs used"**. Requires `sqlglot` (`pip install sqlglot`) for the
   script parsing; if absent, RCA degrades gracefully to data-driven mode. Omit all for a
   pure data-driven run.
 

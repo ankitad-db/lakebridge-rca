@@ -34,6 +34,7 @@ def analyze(
     dialect: str = "snowflake",
     drilldown: bool = True,
     mapping: dict | None = None,
+    use_lineage: bool = False,
 ) -> RcaResult:
     findings, summaries = ingest_with_summaries(runner, recon_id, recon_catalog, recon_schema)
     if mapping:
@@ -41,4 +42,7 @@ def analyze(
     findings = classify_all(findings, dialect=dialect, mapping=mapping)
     if drilldown:
         findings = run_drilldown(findings, runner)
+    if use_lineage:
+        from rca_engine.lineage import run_lineage
+        findings = run_lineage(findings, runner)
     return RcaResult(recon_id=recon_id, dialect=dialect, findings=findings, table_summaries=summaries)

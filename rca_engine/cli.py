@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Folder/file of original source DDL (declared source types).")
     parser.add_argument("--table-manifest", default=None,
                         help="YAML/JSON with an explicit per-table source/target script mapping.")
+    parser.add_argument("--use-lineage", action="store_true",
+                        help="Attach UC lineage evidence (system.access.*_lineage) when available.")
     args = parser.parse_args(argv)
 
     runner = _build_runner(args.profile, args.warehouse_id)
@@ -74,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     result = analyze(
         runner, args.recon_id, args.recon_catalog, args.recon_schema,
         dialect=args.dialect, drilldown=not args.no_drilldown, mapping=mapping,
+        use_lineage=args.use_lineage,
     )
 
     parent = os.path.dirname(args.output_path)
