@@ -1,0 +1,58 @@
+# Databricks Asset Bundle: retail migration target pipeline (medallion).
+# Deploy:  databricks bundle deploy -t dev -p ps-dr-east
+# Run:     databricks bundle run retail_migration_pipeline -t dev -p ps-dr-east
+bundle:
+  name: retail_migration
+
+variables:
+  catalog:
+    default: fevm_ps_dr_us_east_2_catalog
+  warehouse_id:
+    default: 4c79c6902dd2bbc2
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://fevm-fevm-ps-dr-us-east-2.cloud.databricks.com
+
+resources:
+  jobs:
+    retail_migration_pipeline:
+      name: retail_migration_pipeline
+      tasks:
+        - task_key: bronze_ingest
+          notebook_task:
+            notebook_path: ./20_bronze_ingest.py
+            base_parameters:
+              source_catalog: ${var.catalog}
+              bronze_catalog: ${var.catalog}
+
+        - task_key: silver_transform
+          depends_on:
+            - task_key: bronze_ingest
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./21_silver_transform.sql
+
+        - task_key: gold_aggregate
+          depends_on:
+            - task_key: silver_transform
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./22_gold_aggregate.sql
+
+        - task_key: incremental_merge
+          depends_on:
+            - task_key: bronze_ingest
+          notebook_task:
+            notebook_path: ./23_incremental_merge.py
+            base_parameters:
+              target_catalog: ${var.catalog}
+              watermark_order_id: "480"
+
+      job_clusters: []
+      queue:
+        enabled: true

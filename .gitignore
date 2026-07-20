@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Local RCA outputs / generated notebooks
+out/
+*.rca.json
+*_rca.ipynb
+
+# Databricks
+.databricks/
+databricks.yml.bak
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

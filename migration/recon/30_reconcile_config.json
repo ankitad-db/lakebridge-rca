@@ -1,0 +1,11 @@
+{
+  "tables": [
+    { "source_name": "dim_customer", "target_name": "dim_customer", "join_columns": ["customer_id"] },
+    { "source_name": "dim_product", "target_name": "dim_product", "join_columns": ["product_id"] },
+    { "source_name": "dim_store", "target_name": "dim_store", "join_columns": ["store_id"] },
+    { "source_name": "fact_orders", "target_name": "fact_orders", "join_columns": ["order_id"] },
+    { "source_name": "fact_order_items", "target_name": "fact_order_items", "join_columns": ["order_item_id"] },
+    { "source_name": "agg_daily_sales", "target_name": "agg_daily_sales", "join_columns": ["store_id", "sales_date"] }
+  ],
+  "version": 2
+}
