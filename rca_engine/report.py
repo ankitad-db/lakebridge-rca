@@ -110,6 +110,53 @@ def build_tldr(result: RcaResult) -> str:
     return "\n".join(lines)
 
 
+def build_conclusion(result: RcaResult) -> str:
+    """A closing, action-oriented wrap-up grouped by who owns the fix."""
+
+    by_verdict: dict[Verdict, list[Finding]] = {}
+    for f in result.findings:
+        if f.top_hypothesis:
+            by_verdict.setdefault(f.top_hypothesis.verdict, []).append(f)
+
+    def _rows(v: Verdict) -> list[str]:
+        out = []
+        for f in sorted(by_verdict.get(v, []),
+                        key=lambda x: x.top_hypothesis.confidence, reverse=True):
+            h = f.top_hypothesis
+            fix = (h.remediation or h.rationale or "").replace("\n", " ").strip()
+            if len(fix) > 130:
+                fix = fix[:127] + "..."
+            out.append(f"- `{_loc(f)}` — {fix}")
+        return out
+
+    n = len(result.findings)
+    mig = by_verdict.get(Verdict.MIGRATION_INDUCED, [])
+    data = by_verdict.get(Verdict.GENUINE_DATA, [])
+    review = by_verdict.get(Verdict.NEEDS_REVIEW, [])
+    benign = by_verdict.get(Verdict.BENIGN, [])
+
+    lines = ["# 🧾 Conclusion & recommended actions", "",
+             f"Analyzed **{n} findings**. Every verdict below is backed by a query "
+             f"executed in this notebook (see the cell under each finding)."]
+
+    lines += ["", f"## 🔧 Fix in the migration — {len(mig)} ({'owner: migration engineer'})"]
+    lines += _rows(Verdict.MIGRATION_INDUCED) or ["- _None._"]
+
+    lines += ["", f"## 📊 Route to the data owner — {len(data)} (not migration bugs)"]
+    lines += _rows(Verdict.GENUINE_DATA) or ["- _None._"]
+
+    if review:
+        lines += ["", f"## 🔍 Needs review — {len(review)}"]
+        lines += _rows(Verdict.NEEDS_REVIEW)
+
+    lines += ["", f"## ✅ Benign / expected — {len(benign)}",
+              f"- {len(benign)} finding(s) are representation-only or within tolerance; no action."]
+
+    lines += ["", "> If re-running a cell changes an output, update that finding's verdict "
+              "above and regenerate this report so the conclusion always matches the evidence."]
+    return "\n".join(lines)
+
+
 def _md_cell(text: str) -> dict[str, Any]:
     return {"cell_type": "markdown", "metadata": {}, "source": text.splitlines(keepends=True)}
 
@@ -168,6 +215,7 @@ def build_notebook(result: RcaResult) -> dict[str, Any]:
                     key=lambda x: (order.get(x.top_hypothesis.verdict, 9) if x.top_hypothesis else 9,
                                    -(x.top_hypothesis.confidence if x.top_hypothesis else 0))):
         cells.extend(_finding_section(f))
+    cells.append(_md_cell("---\n" + build_conclusion(result)))
     return {
         "cells": cells,
         "metadata": {"language_info": {"name": "python"},

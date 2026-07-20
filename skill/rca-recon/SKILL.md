@@ -104,12 +104,14 @@ Update each finding's verdict/confidence with what the query shows. Iterate unti
 resolved. Do **not** stop if anything is unresolved.
 
 ### 4. Produce the RCA notebook + conclusion
-- `write_notebook(result, "/tmp/rca_<recon_id>.ipynb")` emits a symbol-coded report
-  grouped by verdict: a TL;DR table (counts by verdict) followed by one section per
-  finding with category/confidence/owner, root cause, fix, the confirming query +
-  its evidence, and sample diffs. Re-run any query cell to drill deeper.
-- End with the **TL;DR** from `build_tldr(result)`: counts by verdict, headline root
-  causes, and a clear "what to fix vs. what to route to the data owner" list.
+- `write_notebook(result, "/tmp/rca_<recon_id>.ipynb")` emits a symbol-coded report:
+  a **TL;DR** table (counts by verdict) at the top, one section per finding
+  (category/confidence/owner, root cause, fix, the confirming query + its evidence,
+  sample diffs), and a closing **🧾 Conclusion & recommended actions** section
+  grouped by owner (fix-in-migration vs route-to-data-owner). Re-run any query cell
+  to drill deeper.
+- The markdown is rendered from the concluded result, so every verdict is already
+  backed by an executed drill-down query.
 
 ### 5. Confirm with the user, then run all cells
 - After writing the notebook, **pause and ask the user for approval** before
@@ -121,8 +123,22 @@ resolved. Do **not** stop if anything is unresolved.
   (reclassify a finding, add a drill-down, tweak a fix/owner), apply them, regenerate
   the notebook, and ask again.
 - **On approval, run all cells** top-to-bottom so every confirming query executes
-  live and the outputs are captured in the notebook. Then report that the run
-  completed and restate the final verdict counts.
+  live and the outputs are captured in the notebook.
+
+### 6. Reconcile the conclusion with the executed outputs (always)
+After running all cells, **read each query's output and check it still supports the
+written verdict/confidence in that finding's markdown** (and the TL;DR + Conclusion
+sections):
+- If an output matches the stated conclusion, leave it.
+- If an output changed the picture (e.g. offset is no longer constant, source is
+  actually populated, extra rows are duplicates not new keys), **update that
+  finding** (verdict, confidence, rationale, owner) and **regenerate the notebook**
+  (`write_notebook`) so the TL;DR and 🧾 Conclusion always match the evidence.
+- If any finding is still unresolved, mark it **needs review** with the exact next
+  query/owner. Then restate the final verdict counts to the user.
+
+Never leave a conclusion that contradicts a cell's output — the markdown and the
+executed evidence must agree.
 
 ## Rules
 
