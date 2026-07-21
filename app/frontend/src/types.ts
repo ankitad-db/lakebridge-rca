@@ -6,6 +6,17 @@ export interface AppConfig {
   allow_ondemand: boolean;
   in_app: boolean;
   demo_mode: boolean;
+  workspace_host: string;
+  notebook_dir: string;
+}
+
+export interface JobStatus {
+  state: "idle" | "running" | "done" | "error";
+  message?: string;
+  notebook_path?: string | null;
+  notebook_url?: string | null;
+  tables?: number;
+  findings?: number;
 }
 
 export interface ReconRun {

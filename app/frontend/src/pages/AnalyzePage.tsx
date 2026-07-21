@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { TableAnalysis, TableRef } from "../types";
 import { FindingCard } from "../components/FindingCard";
@@ -39,6 +39,7 @@ function ResultPanel({ res }: { res: TableAnalysis }) {
 
 export function AnalyzePage() {
   const { reconId = "" } = useParams();
+  const nav = useNavigate();
   const [tables, setTables] = useState<TableRef[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
@@ -81,6 +82,9 @@ export function AnalyzePage() {
             <Link to={`/runs/${encodeURIComponent(reconId)}`}>run dashboard</Link>.
           </div>
         </div>
+        <button className="btn primary" onClick={() => nav(`/runs/${encodeURIComponent(reconId)}`)}>
+          ▶ Run full RCA & generate notebook
+        </button>
       </div>
 
       {!tables ? (

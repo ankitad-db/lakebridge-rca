@@ -13,8 +13,19 @@ optionally run a live analysis. It never re-implements engine logic.
 - **Recon runs** — recent reconcile runs (via `list_recon_runs`); pick one.
 - **Run dashboard** — KPI tiles (overall row match %, verdict counts), verdict-distribution
   donut, **🔺 Top priorities** (severity-ranked), and a per-table scorecard (worst first).
+  **▶ Run full RCA & generate notebook** analyzes every table in the run (background job) and
+  publishes per-table + index notebooks to the workspace.
+- **Analyze (table-by-table)** — run the engine live for one table at a time (fast, ~5s each).
 - **Table drill-down** — every finding for a table: severity, verdict, root cause, remediation,
   owner, the 5-source evidence + confirming query, and sample diffs.
+
+### Full-run RCA + workspace notebooks
+`Run full RCA` calls `POST /api/runs/{id}/analyze-all`, which runs the whole run in a background
+thread (poll `GET /api/runs/{id}/job`), writes the complete bundle so the dashboard is populated,
+and publishes runnable notebooks into `RCA_NOTEBOOK_DIR` (one per table + `00_index`). The app's
+service principal needs **CAN_MANAGE** on that workspace folder. The dashboard prefills that folder
+from config but lets you **override the notebook target per run** in the field beside the button
+(a `rca_<recon_id>/` subfolder is created under whichever base you choose).
 
 ## Architecture
 ```
@@ -58,9 +69,10 @@ every scenario and the ✅ clean path.
 |---|---|
 | `RCA_RECON_CATALOG` / `RCA_RECON_SCHEMA` | Where Lakebridge wrote `main`/`metrics`/`details` |
 | `RCA_WAREHOUSE_ID` | SQL warehouse for live discovery/reads (bind a warehouse resource) |
-| `RCA_BUNDLES_DIR` | Folder of pre-computed bundles (a UC Volume in-workspace) |
+| `RCA_BUNDLES_DIR` | Folder of pre-computed bundles (a UC Volume in-workspace, or writable scratch) |
+| `RCA_NOTEBOOK_DIR` | Workspace folder the full-run action publishes notebooks into (SP needs CAN_MANAGE) |
 | `RCA_DIALECT` | Source dialect (default `snowflake`) |
-| `RCA_ALLOW_ONDEMAND` | `true` to let the app run `analyze()` for a recon_id without a bundle |
+| `RCA_ALLOW_ONDEMAND` | `true` to let the dashboard compute a full run on load without a bundle |
 
 With no `RCA_WAREHOUSE_ID`, the App runs in **demo mode** off the bundled sample.
 

@@ -5,14 +5,18 @@ bundles and (optionally) triggers a live run; it never re-implements engine logi
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import re
+import threading
+import time
 from typing import Any, Optional
 
 from rca_engine.models import Finding, RcaResult, ReconType, TableSummary, Verdict
 from rca_engine.severity import severity_label, severity_score
 
-from .config import Settings, get_workspace_client
+from .config import Settings, get_workspace_client, get_workspace_host
 
 _VERDICT_META = {
     "migration_induced": {"icon": "🔧", "label": "Migration-induced", "action": "Fix in the migration"},
@@ -345,6 +349,127 @@ def build_table_view(result: RcaResult, table: str) -> dict[str, Any]:
         "clean": len(findings) == 0,
         "findings": [_finding_view(f) for f in findings],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Full-run analysis + notebook publishing (background job)
+# --------------------------------------------------------------------------- #
+_JOBS: dict[str, dict[str, Any]] = {}
+_JOBS_LOCK = threading.Lock()
+
+
+def workspace_host() -> str:
+    return get_workspace_host()
+
+
+def _notebook_base(settings: Settings, w) -> str:
+    """Workspace folder the notebooks are published under (configurable; defaults
+    to the running identity's home)."""
+    if settings.notebook_dir:
+        return settings.notebook_dir.rstrip("/")
+    try:
+        user = w.current_user.me().user_name
+    except Exception:
+        user = "unknown"
+    return f"/Workspace/Users/{user}/rca_notebooks"
+
+
+def publish_notebooks(settings: Settings, recon_id: str, result: RcaResult,
+                      notebook_dir: str | None = None) -> str:
+    """Write the per-table RCA notebooks (+ index) into the workspace via the SDK
+    so they open as real, runnable Databricks notebooks. Returns the folder path.
+    ``notebook_dir`` overrides the configured/default base for this run."""
+    from databricks.sdk.service.workspace import ImportFormat
+
+    from rca_engine.report import (
+        _subresult,
+        _target_tables,
+        build_index_notebook,
+        build_notebook,
+    )
+
+    w = get_workspace_client()
+    base = notebook_dir.strip().rstrip("/") if notebook_dir and notebook_dir.strip() else _notebook_base(settings, w)
+    folder = f"{base}/rca_{recon_id}"
+    w.workspace.mkdirs(folder)
+
+    def _imp(name: str, nb: dict[str, Any]) -> None:
+        content = base64.b64encode(json.dumps(nb).encode()).decode()
+        w.workspace.import_(path=f"{folder}/{name}", format=ImportFormat.JUPYTER,
+                            content=content, overwrite=True)
+
+    tables = _target_tables(result)
+    table_files: dict[str, str] = {}
+    for tbl in tables:
+        short = tbl.split(".")[-1].strip("`") or tbl
+        name = re.sub(r"[^0-9A-Za-z_.-]", "_", short)
+        if name in table_files.values():
+            name = re.sub(r"[^0-9A-Za-z_.-]", "_", tbl)
+        _imp(name, build_notebook(_subresult(result, tbl)))
+        table_files[tbl] = name
+    if len(tables) > 1:
+        _imp("00_index", build_index_notebook(result, table_files))
+    return folder
+
+
+def full_run_status(recon_id: str) -> dict[str, Any]:
+    with _JOBS_LOCK:
+        return dict(_JOBS.get(recon_id) or {"state": "idle"})
+
+
+def start_full_run(settings: Settings, recon_id: str, drilldown: bool = True,
+                   notebook_dir: str | None = None) -> dict[str, Any]:
+    """Kick off (in a background thread) a full-run RCA: analyze every table, write
+    the complete bundle so the dashboard is populated, and publish notebooks to the
+    workspace. Returns immediately with the job status; poll ``full_run_status``.
+    ``notebook_dir`` optionally overrides where the notebooks are published."""
+    if not (settings.has_warehouse and settings.recon_catalog):
+        return {"state": "error", "message": "No warehouse/catalog configured for live analysis."}
+    with _JOBS_LOCK:
+        cur = _JOBS.get(recon_id)
+        if cur and cur.get("state") == "running":
+            return dict(cur)
+        _JOBS[recon_id] = {"state": "running", "message": "Analyzing all tables (ingest → classify → drill-down)…",
+                           "started": time.time()}
+    threading.Thread(target=_run_full, args=(settings, recon_id, drilldown, notebook_dir),
+                     daemon=True).start()
+    with _JOBS_LOCK:
+        return dict(_JOBS[recon_id])
+
+
+def _run_full(settings: Settings, recon_id: str, drilldown: bool,
+              notebook_dir: str | None = None) -> None:
+    from rca_engine.analyze import analyze
+    from rca_engine.report import write_rca_bundle
+
+    try:
+        result = analyze(_runner(settings), recon_id, settings.recon_catalog,
+                         settings.recon_schema, dialect=settings.dialect, drilldown=drilldown)
+        try:
+            write_rca_bundle(result, settings.bundles_dir, recon_id, combined=False)
+        except Exception as exc:  # dashboard can still read; log and continue
+            print(f"[rca] local bundle write failed for {recon_id}: {exc}")
+        notebook_path, publish_error = None, None
+        try:
+            notebook_path = publish_notebooks(settings, recon_id, result, notebook_dir=notebook_dir)
+        except Exception as exc:
+            publish_error = str(exc)
+            print(f"[rca] notebook publish failed for {recon_id}: {exc}")
+        with _JOBS_LOCK:
+            _JOBS[recon_id] = {
+                "state": "done",
+                "message": ("Full RCA complete." if notebook_path
+                            else f"RCA complete; notebook publish failed: {publish_error}"),
+                "notebook_path": notebook_path,
+                "notebook_url": (f"{get_workspace_host()}/#workspace{notebook_path}"
+                                 if notebook_path and get_workspace_host() else None),
+                "tables": len(result.table_summaries),
+                "findings": len(result.findings),
+                "finished": time.time(),
+            }
+    except Exception as exc:
+        with _JOBS_LOCK:
+            _JOBS[recon_id] = {"state": "error", "message": str(exc), "finished": time.time()}
 
 
 def build_view(result: RcaResult) -> dict[str, Any]:

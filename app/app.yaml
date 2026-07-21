@@ -17,17 +17,25 @@ env:
   - name: RCA_DIALECT
     value: "snowflake"
 
-  # SQL warehouse used for discovery/reads. Bind a "SQL warehouse" resource to the
-  # app and set its id here (or via the resource-injected env var).
+  # SQL warehouse used for live discovery + per-table RCA. The app's service
+  # principal needs "Can use" on this warehouse and SELECT on the recon +
+  # source/target schemas.
   - name: RCA_WAREHOUSE_ID
-    value: ""
+    value: "4c79c6902dd2bbc2"
 
-  # Where pre-computed RCA bundles live (a UC Volume in-workspace). Leave as the
-  # bundled demo dir for a zero-config read-only preview.
+  # Writable scratch dir for freshly-analyzed table bundles (the app source path
+  # is read-only). In live mode the runs list comes from the warehouse, so the
+  # committed demo bundles are not needed here.
   - name: RCA_BUNDLES_DIR
-    value: "/app/bundles"
+    value: "/tmp/rca_bundles"
 
-  # Set to "true" to let the app run analyze() live for a recon_id without a bundle
-  # (P2). Off by default — the app is a reader unless you opt in.
+  # Per-table analysis runs live with just the warehouse set (fast, ~5s/table).
+  # Set to "true" to also let the run dashboard compute a full run on load
+  # (slower for large runs); off keeps the app snappy on the one-table flow.
   - name: RCA_ALLOW_ONDEMAND
     value: "false"
+
+  # Workspace folder the "Run full RCA" action publishes generated notebooks into.
+  # The app's service principal needs write (CAN_MANAGE) on this folder.
+  - name: RCA_NOTEBOOK_DIR
+    value: "/Workspace/Users/ankita.darekar@databricks.com/rca_notebooks"

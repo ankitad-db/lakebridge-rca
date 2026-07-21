@@ -99,11 +99,9 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
                       <button className="btn primary" onClick={() => nav(`/analyze/${encodeURIComponent(r.recon_id)}`)}>
                         ▶ Run RCA
                       </button>
-                      {r.has_bundle !== false && (
-                        <button className="btn" onClick={() => nav(`/runs/${encodeURIComponent(r.recon_id)}`)}>
-                          Dashboard
-                        </button>
-                      )}
+                      <button className="btn" onClick={() => nav(`/runs/${encodeURIComponent(r.recon_id)}`)}>
+                        Dashboard
+                      </button>
                     </div>
                   </td>
                 </tr>

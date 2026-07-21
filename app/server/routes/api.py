@@ -16,6 +16,11 @@ class AnalyzeRequest(BaseModel):
     table: str
 
 
+class FullRunRequest(BaseModel):
+    drilldown: bool = True
+    notebook_dir: str | None = None
+
+
 @router.get("/config")
 def get_config():
     s = load_settings()
@@ -27,6 +32,8 @@ def get_config():
         "allow_ondemand": s.allow_ondemand,
         "in_app": IS_DATABRICKS_APP,
         "demo_mode": not s.has_warehouse,
+        "workspace_host": svc.workspace_host(),
+        "notebook_dir": s.notebook_dir,
     }
 
 
@@ -64,6 +71,21 @@ def analyze_table(recon_id: str, req: AnalyzeRequest):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Analysis failed: {exc}") from exc
     return svc.build_table_view(result, req.table)
+
+
+@router.post("/runs/{recon_id}/analyze-all")
+def analyze_all(recon_id: str, req: FullRunRequest | None = None):
+    """Kick off a full-run RCA (all tables) + publish notebooks to the workspace.
+    Returns immediately; poll GET /runs/{recon_id}/job for progress."""
+    drilldown = req.drilldown if req else True
+    notebook_dir = req.notebook_dir if req else None
+    return svc.start_full_run(load_settings(), recon_id, drilldown=drilldown, notebook_dir=notebook_dir)
+
+
+@router.get("/runs/{recon_id}/job")
+def get_job(recon_id: str):
+    """Status of the background full-run job for this recon (state/notebook link)."""
+    return svc.full_run_status(recon_id)
 
 
 @router.get("/runs/{recon_id}/summary", response_class=PlainTextResponse)

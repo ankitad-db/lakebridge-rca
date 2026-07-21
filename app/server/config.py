@@ -22,6 +22,7 @@ class Settings:
     recon_schema: str = "reconcile"
     dialect: str = "snowflake"
     bundles_dir: str = ""          # where pre-computed RCA bundles live (UC Volume or local)
+    notebook_dir: str = ""         # workspace folder to publish generated RCA notebooks into
     profile: str = ""              # local CLI profile (ignored in-app)
     allow_ondemand: bool = False   # allow the app to run analyze() live (P2); off by default
 
@@ -38,9 +39,23 @@ def load_settings() -> Settings:
         recon_schema=os.environ.get("RCA_RECON_SCHEMA", "reconcile"),
         dialect=os.environ.get("RCA_DIALECT", "snowflake"),
         bundles_dir=os.environ.get("RCA_BUNDLES_DIR", os.path.join(here, "bundles")),
+        notebook_dir=os.environ.get("RCA_NOTEBOOK_DIR", ""),
         profile=os.environ.get("DATABRICKS_PROFILE", ""),
         allow_ondemand=os.environ.get("RCA_ALLOW_ONDEMAND", "").lower() in ("1", "true", "yes"),
     )
+
+
+def get_workspace_host() -> str:
+    """Workspace URL with scheme (for building deep links to published notebooks)."""
+    if IS_DATABRICKS_APP:
+        host = os.environ.get("DATABRICKS_HOST", "")
+        if host and not host.startswith("http"):
+            host = f"https://{host}"
+        return host
+    try:
+        return get_workspace_client().config.host or ""
+    except Exception:
+        return ""
 
 
 def get_workspace_client():

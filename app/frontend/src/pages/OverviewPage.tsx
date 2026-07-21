@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import type { RunView } from "../types";
+import type { JobStatus, RunView } from "../types";
 import { MatchBar, SeverityBadge, VerdictBadge } from "../components/Badges";
 import { VerdictDonut } from "../components/Charts";
 
@@ -9,15 +9,155 @@ export function OverviewPage() {
   const { reconId = "" } = useParams();
   const [view, setView] = useState<RunView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [job, setJob] = useState<JobStatus | null>(null);
+  const [nbDir, setNbDir] = useState<string>("");
+  const poll = useRef<number | null>(null);
+
+  const loadView = useCallback(() => {
+    setLoading(true);
+    return api
+      .run(reconId)
+      .then((v) => {
+        setView(v);
+        setError(null);
+      })
+      .catch((e) => setError(String(e.message || e)))
+      .finally(() => setLoading(false));
+  }, [reconId]);
 
   useEffect(() => {
     setView(null);
     setError(null);
-    api.run(reconId).then(setView).catch((e) => setError(String(e.message || e)));
+    loadView();
+    // Prefill the notebook target from the app config (env default).
+    api.config().then((c) => setNbDir((prev) => prev || c.notebook_dir || "")).catch(() => undefined);
+    // Surface an already-running / previously-finished full-run job.
+    api.job(reconId).then((j) => {
+      if (j.state !== "idle") setJob(j);
+      if (j.state === "running") startPolling();
+    }).catch(() => undefined);
+    return () => {
+      if (poll.current) window.clearInterval(poll.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reconId]);
 
-  if (error) return <div className="panel" style={{ borderColor: "var(--lava)" }}>⚠️ {error}</div>;
-  if (!view) return <div className="center-msg"><div className="spinner" /></div>;
+  function startPolling() {
+    if (poll.current) window.clearInterval(poll.current);
+    poll.current = window.setInterval(async () => {
+      try {
+        const j = await api.job(reconId);
+        setJob(j);
+        if (j.state === "done" || j.state === "error") {
+          if (poll.current) window.clearInterval(poll.current);
+          poll.current = null;
+          if (j.state === "done") loadView();
+        }
+      } catch {
+        /* keep polling */
+      }
+    }, 3000);
+  }
+
+  async function runFull() {
+    try {
+      const j = await api.analyzeAll(reconId, true, nbDir.trim() || undefined);
+      setJob(j);
+      if (j.state === "running") startPolling();
+      else if (j.state === "done") loadView();
+    } catch (e) {
+      setJob({ state: "error", message: String((e as Error).message || e) });
+    }
+  }
+
+  const running = job?.state === "running";
+
+  const runFullBtn = (
+    <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <input
+        className="mono"
+        title="Workspace folder to publish notebooks into (a rca_<recon_id> subfolder is created)"
+        placeholder="notebook target folder…"
+        value={nbDir}
+        onChange={(e) => setNbDir(e.target.value)}
+        disabled={running}
+        style={{
+          width: 340, padding: "8px 10px", borderRadius: 8, fontSize: 12,
+          border: "1px solid var(--border-2)", background: "var(--panel-2)", color: "var(--text)",
+        }}
+      />
+      <button className="btn primary" onClick={runFull} disabled={running}>
+        {running ? "Running full RCA…" : "▶ Run full RCA & generate notebook"}
+      </button>
+    </div>
+  );
+
+  const jobBanner = job && job.state !== "idle" && (
+    <div
+      className="panel section"
+      style={{
+        borderColor:
+          job.state === "error" ? "var(--lava)" : job.state === "done" ? "var(--green, #3fb950)" : "var(--amber)",
+      }}
+    >
+      {job.state === "running" && (
+        <div className="row" style={{ alignItems: "center", gap: 10 }}>
+          <div className="spinner" /> <span>{job.message || "Analyzing all tables…"}</span>
+        </div>
+      )}
+      {job.state === "done" && (
+        <div>
+          ✅ {job.message} {job.tables != null && <span className="muted">· {job.tables} tables · {job.findings} findings</span>}
+          {job.notebook_url ? (
+            <div style={{ marginTop: 8 }}>
+              📓 Notebook published to the workspace:{" "}
+              <a className="btn" href={job.notebook_url} target="_blank" rel="noreferrer">
+                Open in workspace ↗
+              </a>
+              <div className="mono muted" style={{ fontSize: 12, marginTop: 6 }}>{job.notebook_path}</div>
+            </div>
+          ) : (
+            <div className="muted" style={{ marginTop: 6 }}>{job.notebook_path || "Notebook publish skipped."}</div>
+          )}
+        </div>
+      )}
+      {job.state === "error" && <div style={{ color: "var(--lava-2)" }}>⚠️ {job.message}</div>}
+    </div>
+  );
+
+  // Empty / not-yet-analyzed state: offer the full-run action instead of a dead error.
+  if (!loading && !view) {
+    return (
+      <>
+        <div className="crumbs">
+          <Link to="/">Recon runs</Link> / <span className="mono">{reconId}</span>
+        </div>
+        <div className="topbar">
+          <div>
+            <div className="title">Run dashboard</div>
+            <div className="subtitle">This run hasn’t been analyzed yet — run the full RCA to populate the dashboard and generate notebooks.</div>
+          </div>
+          {runFullBtn}
+        </div>
+        {jobBanner}
+        {!job && (
+          <div className="panel center-msg">
+            <div>
+              <p className="muted" style={{ marginBottom: 12 }}>
+                Or analyze one table at a time on the{" "}
+                <Link to={`/analyze/${encodeURIComponent(reconId)}`}>Analyze page</Link>.
+              </p>
+              {runFullBtn}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (loading && !view) return <div className="center-msg"><div className="spinner" /></div>;
+  if (!view) return <div className="panel" style={{ borderColor: "var(--lava)" }}>⚠️ {error}</div>;
 
   const c = view.verdict_counts;
   return (
@@ -33,10 +173,15 @@ export function OverviewPage() {
             <code>{view.dialect}</code>
           </div>
         </div>
-        <a className="btn" href={api.summaryUrl(view.recon_id)} target="_blank" rel="noreferrer">
-          ⬇ SUMMARY.md
-        </a>
+        <div className="row" style={{ gap: 8 }}>
+          {runFullBtn}
+          <a className="btn" href={api.summaryUrl(view.recon_id)} target="_blank" rel="noreferrer">
+            ⬇ SUMMARY.md
+          </a>
+        </div>
       </div>
+
+      {jobBanner}
 
       {/* KPI tiles */}
       <div className="grid cards">

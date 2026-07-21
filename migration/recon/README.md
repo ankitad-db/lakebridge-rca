@@ -1,13 +1,48 @@
 # Reconcile configs
 
-Two Lakebridge `reconcile` table configs, both driving the same 16-table pilot but with
-different intent. Pick one when you run `databricks labs lakebridge reconcile` (or point the
-RCA skill's `recon_config` at it).
+Lakebridge `reconcile` table configs for the migration test bed. Pick one when you run
+`databricks labs lakebridge reconcile` (or point the RCA skill's `recon_config` at it). Reconcile
+loads the config from the workspace install folder as
+`~/.lakebridge/recon_config_databricks_<catalog>_all.json`, so "running a config" means importing
+that file, e.g.:
+
+```bash
+databricks workspace import \
+  "/Users/<you>/.lakebridge/recon_config_databricks_fevm_ps_dr_us_east_2_catalog_all.json" \
+  --file migration/recon/33_reconcile_config_full.json --format RAW --overwrite -p ps-dr-east
+databricks labs lakebridge reconcile -p ps-dr-east
+```
 
 | File | Purpose |
 |---|---|
 | [`30_reconcile_config.json`](30_reconcile_config.json) | **Baseline.** Plain `source_name`/`target_name`/`join_columns` only — no mappings, transforms, or thresholds. Every injected defect surfaces raw, so it backs the calibrated scenario oracle (`../scenarios.yaml`, 22 scenarios) and the unit/integration tests. Start here. |
 | [`31_reconcile_config_advanced.json`](31_reconcile_config_advanced.json) | **Feature demo / RCA stress test.** Exercises most reconcile customizations so we can verify the RCA correctly *reads and reasons about* a real-world, tuned config. |
+| [`32_reconcile_config_edge.json`](32_reconcile_config_edge.json) | **Edge-only run.** The 9 edge tables (`edge_numeric`, `edge_events`, `edge_string`, `dim_supplier`, `dim_config`, `fact_inventory`, `dim_flag`, `fact_payments`, `agg_weekly_sales`) that reconcile cleanly with plain configs. Excludes `edge_geo` (see caveat below). |
+| [`33_reconcile_config_full.json`](33_reconcile_config_full.json) | **Everything in one run.** All 16 pairs (6 pilot + 10 edge), with `edge_geo` handled via `column_mapping` so reconcile does not abort. Recommended for a single comprehensive `recon_id`. |
+
+## ⚠️ Caveat: renamed columns abort `report_type: all`
+
+`edge_geo` renames `country` → `country_name` in the target (scenario **E4**). With
+`report_type: all`, Lakebridge's data comparison requires matching column names and raises
+`ColumnMismatchException` — which aborts the **entire** run, not just that table. Two ways to
+handle it, both real-world valid:
+- **Exclude it** (baseline `32_…edge.json`): reconcile the rest; treat the rename as a known
+  schema diff the RCA reports separately.
+- **Map it** (`33_…full.json` / `31_…advanced.json`): add `column_mapping`
+  `country → country_name` so reconcile compares by value; only the residual `lat` DECIMAL→DOUBLE
+  diff remains.
+
+## Real recon runs on this workspace
+
+Produced by actually running `databricks labs lakebridge reconcile` against
+`fevm_ps_dr_us_east_2_catalog` (source `mig_source_sim` → target `mig_target`, dialect
+`databricks`). Point the RCA CLI/skill/app at any of these `recon_id`s:
+
+| recon_id | Config | Pairs | Tables with diffs |
+|---|---|---|---|
+| `0fe6053f134846948490952e94b747bf` | pilot (`30_…`) | 6 | 5 |
+| `e8330139f4144001a5ba218ba0689b28` | edge (`32_…`) | 9 | 8 |
+| `eedae7b85e034c63b6b5fa96e1d044e5` | full (`33_…`) | 16 | 14 |
 
 ## Is the recon run customizable? Yes — and the RCA now understands it
 
