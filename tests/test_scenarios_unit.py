@@ -11,8 +11,8 @@ from __future__ import annotations
 import unicodedata
 
 import pytest
-
 from conftest import load_scenarios, make_column_finding
+
 from rca_engine.classify import classify_all
 
 # Scenarios that need a live drill-down/context to reach the final verdict, so the

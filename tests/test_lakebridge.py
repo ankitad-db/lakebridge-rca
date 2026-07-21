@@ -4,6 +4,7 @@ against the real migration scripts in this repo."""
 from __future__ import annotations
 
 from conftest import REPO_ROOT
+
 from rca_engine.lakebridge import (
     build_mapping,
     parse_source_ddl,

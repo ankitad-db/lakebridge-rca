@@ -25,9 +25,8 @@ Observed schema (Lakebridge / lakebridge reconcile):
 from __future__ import annotations
 
 import json
-from typing import Any, Protocol
-
 import re
+from typing import Any, Protocol
 
 from rca_engine.models import Finding, MismatchSample, ReconType, TableSummary
 

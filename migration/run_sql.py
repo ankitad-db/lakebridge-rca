@@ -72,8 +72,8 @@ def split_statements(sql: str) -> list[str]:
     # Drop statements that are entirely comments/blank.
     cleaned = []
     for s in stmts:
-        lines = [l for l in s.splitlines() if l.strip()]
-        if lines and not all(l.strip().startswith("--") for l in lines):
+        lines = [ln for ln in s.splitlines() if ln.strip()]
+        if lines and not all(ln.strip().startswith("--") for ln in lines):
             cleaned.append(s)
     return cleaned
 

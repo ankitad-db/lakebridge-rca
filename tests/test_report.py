@@ -6,8 +6,8 @@ from rca_engine.classify import classify_all
 from rca_engine.models import (
     Finding,
     MismatchSample,
-    ReconType,
     RcaResult,
+    ReconType,
     TableSummary,
 )
 from rca_engine.report import build_conclusion, build_notebook, build_tldr, to_dict
