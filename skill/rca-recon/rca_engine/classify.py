@@ -7,7 +7,7 @@ on top to raise confidence or resolve NEEDS_REVIEW findings.
 from __future__ import annotations
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from rca_engine.knowledge import KnowledgeBase, load_kb
 from rca_engine.models import (
@@ -49,6 +49,28 @@ def _verdict_for(category: RootCauseCategory, strength: float, provenance: bool)
     return Verdict.NEEDS_REVIEW
 
 
+def _probe_evidence(signals: list[ProbeSignal], sampled_rows: int) -> list[Evidence]:
+    """Collapse repeated probe signals (the same pattern fires on many sampled rows)
+    into distinct evidence lines, folding the repeat count into the detail so the UI
+    shows how broadly the pattern held instead of listing the identical line N times."""
+    counts = Counter(s.detail for s in signals)
+    evidence: list[Evidence] = []
+    seen: set[str] = set()
+    for s in signals:
+        if s.detail in seen:
+            continue
+        seen.add(s.detail)
+        n = counts[s.detail]
+        detail = s.detail
+        if n > 1:
+            shown = min(n, sampled_rows) if sampled_rows else n
+            detail = f"{s.detail} (matched {shown} of {sampled_rows or n} sampled rows)"
+        evidence.append(Evidence(label="probe", detail=detail, data=s.meta))
+        if len(evidence) >= 3:
+            break
+    return evidence
+
+
 def _classify_column_mismatch(finding: Finding, kb: KnowledgeBase) -> list[Hypothesis]:
     # Aggregate probe signals across all sampled value pairs.
     agg: dict[RootCauseCategory, list[ProbeSignal]] = defaultdict(list)
@@ -76,7 +98,7 @@ def _classify_column_mismatch(finding: Finding, kb: KnowledgeBase) -> list[Hypot
                 recommended_owner="data owner / source team"
                 if verdict == Verdict.GENUINE_DATA
                 else "migration engineer",
-                evidence=[Evidence(label="probe", detail=s.detail, data=s.meta) for s in signals[:3]],
+                evidence=_probe_evidence(signals, len(finding.samples)),
             )
         )
 
