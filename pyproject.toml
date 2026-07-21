@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 keywords = ["databricks", "lakebridge", "reconciliation", "migration", "rca", "genie-code", "snowflake"]
-authors = [{ name = "RCA Genie-Code Skill contributors" }]
+authors = [{ name = "Ankita Darekar" }]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
