@@ -362,6 +362,25 @@ def workspace_host() -> str:
     return get_workspace_host()
 
 
+def _ensure_folder(w, folder: str) -> None:
+    """mkdirs, self-healing the deterministic ``rca_<id>`` path if a stale
+    non-directory object (e.g. a notebook from an older publish) squats on it."""
+    try:
+        w.workspace.mkdirs(folder)
+        return
+    except Exception:
+        pass
+    from databricks.sdk.service.workspace import ObjectType
+    try:
+        obj = w.workspace.get_status(folder)
+        if obj and obj.object_type == ObjectType.DIRECTORY:
+            return  # already a folder; mkdirs quirk, fine
+        w.workspace.delete(folder, recursive=False)  # stale notebook/file at our path
+    except Exception:
+        pass
+    w.workspace.mkdirs(folder)
+
+
 def _notebook_base(settings: Settings, w) -> str:
     """Workspace folder the notebooks are published under (configurable; defaults
     to the running identity's home)."""
@@ -391,7 +410,7 @@ def publish_notebooks(settings: Settings, recon_id: str, result: RcaResult,
     w = get_workspace_client()
     base = notebook_dir.strip().rstrip("/") if notebook_dir and notebook_dir.strip() else _notebook_base(settings, w)
     folder = f"{base}/rca_{recon_id}"
-    w.workspace.mkdirs(folder)
+    _ensure_folder(w, folder)
 
     def _imp(name: str, nb: dict[str, Any]) -> None:
         content = base64.b64encode(json.dumps(nb).encode()).decode()
@@ -410,6 +429,38 @@ def publish_notebooks(settings: Settings, recon_id: str, result: RcaResult,
     if len(tables) > 1:
         _imp("00_index", build_index_notebook(result, table_files))
     return folder
+
+
+def publish_table_notebook(settings: Settings, recon_id: str, result: RcaResult,
+                           notebook_dir: str | None = None) -> dict[str, Any]:
+    """Publish the notebook for a single-table RCA result into the workspace (same
+    ``rca_<recon_id>/`` folder the full run uses) and return the notebook path + URL."""
+    from databricks.sdk.service.workspace import ImportFormat
+
+    from rca_engine.report import _subresult, _target_tables, build_notebook
+
+    tables = _target_tables(result)
+    if not tables:
+        return {"notebook_error": "No target table to publish."}
+    tbl = tables[0]
+
+    w = get_workspace_client()
+    base = notebook_dir.strip().rstrip("/") if notebook_dir and notebook_dir.strip() else _notebook_base(settings, w)
+    folder = f"{base}/rca_{recon_id}"
+    _ensure_folder(w, folder)
+
+    short = tbl.split(".")[-1].strip("`") or tbl
+    name = re.sub(r"[^0-9A-Za-z_.-]", "_", short)
+    path = f"{folder}/{name}"
+    content = base64.b64encode(json.dumps(build_notebook(_subresult(result, tbl))).encode()).decode()
+    w.workspace.import_(path=path, format=ImportFormat.JUPYTER, content=content, overwrite=True)
+
+    host = get_workspace_host()
+    return {
+        "notebook_path": path,
+        "notebook_url": f"{host}/#workspace{path}" if host else None,
+        "notebook_folder": folder,
+    }
 
 
 def full_run_status(recon_id: str) -> dict[str, Any]:

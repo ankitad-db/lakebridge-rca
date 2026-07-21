@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
-import type { TableAnalysis, TableRef } from "../types";
+import type { NotebookRef, TableAnalysis, TableRef } from "../types";
 import { FindingCard } from "../components/FindingCard";
 
 const VERDICT_CLASS: Record<string, string> = {
@@ -11,10 +11,34 @@ const VERDICT_CLASS: Record<string, string> = {
   needs_review: "v-review",
 };
 
+function NotebookLink({ nb }: { nb: NotebookRef }) {
+  if (nb.notebook_error) {
+    return (
+      <div className="panel" style={{ borderColor: "var(--lava-2)", fontSize: 13, marginBottom: 12 }}>
+        ⚠️ Notebook publish failed: {nb.notebook_error}
+      </div>
+    );
+  }
+  if (!nb.notebook_path) return null;
+  return (
+    <div className="panel" style={{ fontSize: 13, marginBottom: 12 }}>
+      📓 Notebook published to{" "}
+      {nb.notebook_url ? (
+        <a href={nb.notebook_url} target="_blank" rel="noreferrer" className="mono">
+          {nb.notebook_path}
+        </a>
+      ) : (
+        <span className="mono">{nb.notebook_path}</span>
+      )}
+    </div>
+  );
+}
+
 function ResultPanel({ res }: { res: TableAnalysis }) {
   const s = res.summary;
   return (
     <div className="section">
+      {res.notebook && <NotebookLink nb={res.notebook} />}
       <div className="row" style={{ gap: 10, marginBottom: 12 }}>
         {Object.entries(res.verdict_counts).map(([k, n]) => (
           <span key={k} className={`badge ${VERDICT_CLASS[k] || "pill"}`}>
@@ -78,8 +102,9 @@ export function AnalyzePage() {
           <div className="title">Run RCA — one table at a time</div>
           <div className="subtitle">
             Runs the same engine the Genie skill runs (ingest → classify → live drill-down) for the
-            table you pick. Analyzed tables also update the{" "}
-            <Link to={`/runs/${encodeURIComponent(reconId)}`}>run dashboard</Link>.
+            table you pick. Each analyzed table updates the{" "}
+            <Link to={`/runs/${encodeURIComponent(reconId)}`}>run dashboard</Link> and publishes a
+            runnable notebook into the workspace <span className="mono">rca_{reconId}/</span> folder.
           </div>
         </div>
         <button className="btn primary" onClick={() => nav(`/runs/${encodeURIComponent(reconId)}`)}>

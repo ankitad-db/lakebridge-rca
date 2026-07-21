@@ -105,6 +105,13 @@ export interface TableSummaryView {
   schema_ok: boolean;
 }
 
+export interface NotebookRef {
+  notebook_path?: string;
+  notebook_url?: string | null;
+  notebook_folder?: string;
+  notebook_error?: string;
+}
+
 export interface TableAnalysis {
   recon_id: string;
   table: string;
@@ -113,6 +120,7 @@ export interface TableAnalysis {
   summary: TableSummaryView | null;
   clean: boolean;
   findings: FindingView[];
+  notebook?: NotebookRef;
 }
 
 export interface RunView {

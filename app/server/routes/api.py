@@ -14,6 +14,8 @@ router = APIRouter()
 
 class AnalyzeRequest(BaseModel):
     table: str
+    notebook_dir: str | None = None
+    publish: bool = True
 
 
 class FullRunRequest(BaseModel):
@@ -65,12 +67,22 @@ def get_tables(recon_id: str):
 
 @router.post("/runs/{recon_id}/analyze")
 def analyze_table(recon_id: str, req: AnalyzeRequest):
-    """Run the RCA for one table (calls the engine the Genie skill uses) and return it."""
+    """Run the RCA for one table (calls the engine the Genie skill uses), publish its
+    notebook to the workspace, and return the view + notebook link."""
+    settings = load_settings()
     try:
-        result = svc.run_analysis(load_settings(), recon_id, req.table)
+        result = svc.run_analysis(settings, recon_id, req.table)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Analysis failed: {exc}") from exc
-    return svc.build_table_view(result, req.table)
+    view = svc.build_table_view(result, req.table)
+    # Publish a runnable notebook (folder rca_<recon_id>/) when running live.
+    if req.publish and settings.has_warehouse:
+        try:
+            view["notebook"] = svc.publish_table_notebook(settings, recon_id, result,
+                                                          notebook_dir=req.notebook_dir)
+        except Exception as exc:  # analysis still succeeded; surface publish failure softly
+            view["notebook"] = {"notebook_error": str(exc)}
+    return view
 
 
 @router.post("/runs/{recon_id}/analyze-all")
