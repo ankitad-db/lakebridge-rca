@@ -63,12 +63,25 @@ class TableMapping:
     source_filter: str = ""
     target_filter: str = ""
     transpile_issues: list[TranspileIssue] = field(default_factory=list)
+    # --- extra Lakebridge reconcile-config features (customize what/how recon compares) ---
+    recon_transforms: dict[str, dict[str, str]] = field(default_factory=dict)  # col(lower) -> {source, target}
+    column_thresholds: dict[str, dict[str, str]] = field(default_factory=dict)  # col(lower) -> {lower,upper,type}
+    table_thresholds: list[dict] = field(default_factory=list)
+    select_columns: list[str] = field(default_factory=list)
+    drop_columns: list[str] = field(default_factory=list)
+    jdbc_reader_options: dict = field(default_factory=dict)
 
     def transform_for(self, target_col: str) -> Optional[ColumnTransform]:
         return self.transforms.get(target_col)
 
     def source_type_of(self, col: str) -> Optional[str]:
         return self.source_types.get(col.lower()) if col else None
+
+    def recon_transform_for(self, col: str) -> Optional[dict[str, str]]:
+        return self.recon_transforms.get(col.lower()) if col else None
+
+    def threshold_for(self, col: str) -> Optional[dict[str, str]]:
+        return self.column_thresholds.get(col.lower()) if col else None
 
 
 def _short(name: str) -> str:
@@ -93,6 +106,19 @@ def load_recon_config(path: str | Path) -> dict[str, TableMapping]:
                    for c in (t.get("column_mapping") or []) if c.get("source_name")}
         filters = t.get("filters") or {}
         keys = list(t.get("join_columns") or [])
+        recon_transforms = {
+            (tr.get("column_name") or "").lower(): {"source": tr.get("source") or "",
+                                                    "target": tr.get("target") or ""}
+            for tr in (t.get("transformations") or []) if tr.get("column_name")
+        }
+        col_thresholds = {
+            (th.get("column_name") or "").lower(): {
+                "lower": str(th.get("lower_bound", "")),
+                "upper": str(th.get("upper_bound", "")),
+                "type": th.get("type", ""),
+            }
+            for th in (t.get("column_thresholds") or []) if th.get("column_name")
+        }
         out[_short(tgt)] = TableMapping(
             source_table=src,
             target_table=tgt,
@@ -101,6 +127,12 @@ def load_recon_config(path: str | Path) -> dict[str, TableMapping]:
             column_map=col_map,
             source_filter=(filters.get("source") or ""),
             target_filter=(filters.get("target") or ""),
+            recon_transforms=recon_transforms,
+            column_thresholds=col_thresholds,
+            table_thresholds=list(t.get("table_thresholds") or []),
+            select_columns=list(t.get("select_columns") or []),
+            drop_columns=list(t.get("drop_columns") or []),
+            jdbc_reader_options=dict(t.get("jdbc_reader_options") or {}),
         )
     return out
 

@@ -10,7 +10,14 @@ from rca_engine.models import (
     ReconType,
     TableSummary,
 )
-from rca_engine.report import build_conclusion, build_notebook, build_tldr, to_dict
+from rca_engine.report import (
+    build_conclusion,
+    build_index_notebook,
+    build_notebook,
+    build_tldr,
+    to_dict,
+    write_notebooks_per_table,
+)
 
 
 def _sample_result() -> RcaResult:
@@ -59,3 +66,47 @@ def test_to_dict_roundtrip_keys():
 def test_verdict_counts():
     counts = _sample_result().verdict_counts()
     assert counts["migration_induced"] >= 1
+
+
+def _multi_table_result() -> RcaResult:
+    base = _sample_result()
+    f2 = Finding(recon_id="r1", source_table="src.dim", target_table="tgt.dim",
+                 recon_type=ReconType.COLUMN_MISMATCH, column="name",
+                 mismatch_count=2, total_count=50,
+                 samples=[MismatchSample(keys={"id": 1}, column="name",
+                                         source_value="A", target_value="a")])
+    findings = base.findings + classify_all([f2])
+    summ = base.table_summaries + [
+        TableSummary(source_table="src.dim", target_table="tgt.dim",
+                     source_count=50, target_count=50, absolute_mismatch=2,
+                     mismatch_columns=["name"], join_keys=["id"]),
+        TableSummary(source_table="src.clean", target_table="tgt.clean",
+                     source_count=10, target_count=10),
+    ]
+    return RcaResult(recon_id="r1", dialect="snowflake", findings=findings, table_summaries=summ)
+
+
+def test_write_notebooks_per_table(tmp_path):
+    res = _multi_table_result()
+    paths = write_notebooks_per_table(res, str(tmp_path), prefix="rca_r1")
+    # index + one notebook per target table (fact, dim, clean)
+    assert len(paths) == 4
+    assert paths[0].endswith("rca_r1_index.ipynb")
+    names = {p.split("/")[-1] for p in paths[1:]}
+    assert names == {"rca_r1_tgt.fact.ipynb", "rca_r1_tgt.dim.ipynb", "rca_r1_tgt.clean.ipynb"}
+
+
+def test_index_notebook_lists_all_tables():
+    res = _multi_table_result()
+    nb = build_index_notebook(res, {"tgt.fact": "rca_r1_tgt.fact.ipynb"})
+    src = "\n".join("".join(c["source"]) for c in nb["cells"])
+    assert "tgt.fact" in src and "tgt.dim" in src and "tgt.clean" in src
+
+
+def test_per_table_notebook_only_has_that_tables_findings():
+    from rca_engine.report import _subresult
+
+    res = _multi_table_result()
+    sub = _subresult(res, "tgt.dim")
+    assert {f.target_table for f in sub.findings} == {"tgt.dim"}
+    assert {s.target_table for s in sub.table_summaries} == {"tgt.dim"}

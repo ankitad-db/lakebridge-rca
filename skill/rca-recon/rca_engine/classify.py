@@ -216,6 +216,44 @@ def _apply_source_type(f: Finding, top, tm, ct) -> None:
         top.confidence = round(min(0.99, max(top.confidence, 0.6) + 0.05), 2)
 
 
+def _apply_recon_config_features(f: Finding, top, tm) -> None:
+    """Reflect the reconcile-config customizations (column_mapping / transformations /
+    column_thresholds) as evidence on the finding.
+
+    These change *what/how* reconcile compared, so they are direct context for the
+    verdict: a mismatch that survived a recon-side transform is a real residual
+    difference; a mismatch reported despite a tolerance exceeded that tolerance.
+    """
+
+    col = f.column
+    # A renamed column (recon column_mapping): note the source<->target name mapping.
+    src_name = next((s for s, t in tm.column_map.items() if (t or "").lower() == col.lower()), None)
+    if src_name and src_name.lower() != col.lower():
+        top.evidence.append(Evidence(
+            label="recon_config",
+            detail=f"Recon column mapping compares source `{src_name}` to target `{col}` "
+            f"(renamed in migration); the values are matched despite the rename.",
+        ))
+
+    rt = tm.recon_transform_for(col)
+    if rt and (rt.get("source") or rt.get("target")):
+        top.evidence.append(Evidence(
+            label="recon_config",
+            detail=f"Recon applied a comparison transform on `{col}` "
+            f"(source=`{rt.get('source') or '—'}`, target=`{rt.get('target') or '—'}`), yet a "
+            f"mismatch still surfaced — the difference is a real residual, not the normalized part.",
+        ))
+
+    th = tm.threshold_for(col)
+    if th and (th.get("lower") or th.get("upper")):
+        bound = f"[{th.get('lower') or '−∞'}, {th.get('upper') or '+∞'}]"
+        top.evidence.append(Evidence(
+            label="recon_config",
+            detail=f"Recon set a tolerance {bound} on `{col}`; this row was still flagged, so the "
+            f"difference exceeds the configured threshold.",
+        ))
+
+
 def _code_correlation_pass(findings: list[Finding], mapping: dict) -> None:
     """Confirm/deny a mismatch's cause using the Lakebridge transpile artifacts.
 
@@ -233,6 +271,7 @@ def _code_correlation_pass(findings: list[Finding], mapping: dict) -> None:
             continue
 
         if f.recon_type == ReconType.COLUMN_MISMATCH and f.column:
+            _apply_recon_config_features(f, top, tm)
             ct = tm.transform_for(f.column)
             if ct is None:
                 _apply_source_type(f, top, tm, ct)

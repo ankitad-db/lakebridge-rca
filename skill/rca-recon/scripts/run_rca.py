@@ -27,7 +27,7 @@ if str(_SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_DIR))
 
 from rca_engine.analyze import analyze
-from rca_engine.report import build_tldr, write_json, write_notebook
+from rca_engine.report import build_tldr, write_json, write_notebook, write_notebooks_per_table
 from rca_engine.runners import SparkQueryRunner
 
 
@@ -97,6 +97,14 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None):
     write_notebook(result, f"{base}.ipynb")
     print(build_tldr(result))
     print(f"\nArtifacts: {base}.json  {base}.ipynb")
+
+    # Per-table notebooks (default): one notebook per reconciled table + an index,
+    # so multi-table recon runs split into per-owner sections instead of one long book.
+    if cfg.get("notebook_per_table", True) and len(result.table_summaries) > 1:
+        tables_dir = f"{base}_tables"
+        paths = write_notebooks_per_table(result, tables_dir, prefix=f"rca_{recon_id}")
+        print(f"Per-table notebooks ({len(paths) - 1}) + index in: {tables_dir}")
+        print(f"  index: {paths[0]}")
     return result
 
 

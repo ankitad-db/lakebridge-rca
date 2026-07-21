@@ -446,3 +446,60 @@ def build_notebook(result: RcaResult) -> dict[str, Any]:
 def write_notebook(result: RcaResult, path: str) -> None:
     with open(path, "w") as f:
         json.dump(build_notebook(result), f, indent=1)
+
+
+# --------------------------------------------------------------------------- #
+# Per-table notebooks (one notebook per reconciled table + a master index)
+# --------------------------------------------------------------------------- #
+def _target_tables(result: RcaResult) -> list[str]:
+    names = {s.target_table for s in result.table_summaries}
+    names |= {f.target_table for f in result.findings}
+    return sorted(n for n in names if n)
+
+
+def _subresult(result: RcaResult, target_table: str) -> RcaResult:
+    """A single-table view of the run, reusing the same report machinery."""
+    return RcaResult(
+        recon_id=result.recon_id,
+        dialect=result.dialect,
+        findings=[f for f in result.findings if f.target_table == target_table],
+        table_summaries=[s for s in result.table_summaries if s.target_table == target_table],
+    )
+
+
+def build_index_notebook(result: RcaResult, table_files: dict[str, str]) -> dict[str, Any]:
+    """A master routing notebook: overall TL;DR + a per-table index linking each notebook."""
+    cells = [_md_cell(build_tldr(result))]
+    rows = ["| Table | Verdicts | Findings | Notebook |", "|---|---|---|---|"]
+    for tbl in _target_tables(result):
+        fs = [f for f in result.findings if f.target_table == tbl]
+        badge = _verdict_badges(fs) if fs else "✅ clean"
+        rows.append(f"| `{tbl}` | {badge} | {len(fs)} | `{table_files.get(tbl, '—')}` |")
+    cells.append(_md_cell("---\n# 🗂️ Per-table RCA notebooks\n\nOne notebook per reconciled "
+                          "table (open the file listed below). Route each to its owner.\n\n"
+                          + "\n".join(rows)))
+    return {
+        "cells": cells,
+        "metadata": {"language_info": {"name": "python"},
+                     "kernelspec": {"name": "python3", "display_name": "Python 3"}},
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+
+
+def write_notebooks_per_table(result: RcaResult, out_dir: str, prefix: str = "rca") -> list[str]:
+    """Write one notebook per reconciled table plus an index; returns paths (index first)."""
+    import os
+
+    os.makedirs(out_dir, exist_ok=True)
+    table_files: dict[str, str] = {}
+    written: list[str] = []
+    for tbl in _target_tables(result):
+        fname = f"{prefix}_{tbl}.ipynb"
+        write_notebook(_subresult(result, tbl), os.path.join(out_dir, fname))
+        table_files[tbl] = fname
+        written.append(os.path.join(out_dir, fname))
+    idx_path = os.path.join(out_dir, f"{prefix}_index.ipynb")
+    with open(idx_path, "w") as f:
+        json.dump(build_index_notebook(result, table_files), f, indent=1)
+    return [idx_path, *written]

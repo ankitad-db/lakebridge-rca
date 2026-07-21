@@ -123,7 +123,15 @@ result = analyze(
     dialect=cfg.get("dialect", "snowflake"), drilldown=True,
 )
 print(build_tldr(result))
-write_notebook(result, os.path.join(out_dir, f"rca_{recon_id}.ipynb"))  # symbol-coded report
+write_notebook(result, os.path.join(out_dir, f"rca_{recon_id}.ipynb"))  # combined report
+
+# Multi-table recon: also emit one notebook per table + a master index, so each
+# table is its own owner-routable notebook (sections are already split per table
+# inside the combined notebook too).
+from rca_engine.report import write_notebooks_per_table
+if len(result.table_summaries) > 1:
+    write_notebooks_per_table(result, os.path.join(out_dir, f"rca_{recon_id}_tables"),
+                              prefix=f"rca_{recon_id}")
 ```
 
 `scripts/run_rca.py` also accepts the location: `run(recon_id, spark, out_dir=...)`
@@ -177,6 +185,18 @@ resolved. Do **not** stop if anything is unresolved.
 - The markdown is rendered from the concluded result, so every verdict is already
   backed by an executed drill-down query, and per-column counts are reconciled to
   the exact number of differing rows (recon `details` only stores a sample).
+- **Per-table notebooks (multi-table recon):** the combined notebook always splits
+  the findings into a top-level section **per table pair** (`## 📦 <table>`). When a
+  recon covers more than one table, also call `write_notebooks_per_table(result,
+  out_dir, prefix=...)` to emit **one self-contained notebook per table** plus a
+  master **index** notebook that links each table to its verdict rollup — so each
+  table can be routed to its owner independently. This is on by default in
+  `scripts/run_rca.py` (config `notebook_per_table: true`).
+- **Recon customization is respected:** if the Lakebridge reconcile config uses
+  `column_mapping`, `transformations`, `column_thresholds`, `table_thresholds`,
+  `filters`, or `select/drop_columns`, the engine ingests them and adds
+  `recon_config` evidence to the affected finding (e.g. "compared despite rename",
+  "mismatch exceeds the ±0.005 tolerance"). See `migration/recon/README.md`.
 
 ### 5. Confirm with the user, then run all cells
 - After writing the notebook, **pause and ask the user for approval** before

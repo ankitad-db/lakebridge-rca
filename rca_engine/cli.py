@@ -11,7 +11,7 @@ import argparse
 import os
 import sys
 
-from rca_engine.report import build_tldr, write_json, write_notebook
+from rca_engine.report import build_tldr, write_json, write_notebook, write_notebooks_per_table
 
 
 def _build_runner(profile: str | None, warehouse_id: str | None):
@@ -53,6 +53,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="YAML/JSON with an explicit per-table source/target script mapping.")
     parser.add_argument("--use-lineage", action="store_true",
                         help="Attach UC lineage evidence (system.access.*_lineage) when available.")
+    parser.add_argument("--notebook-per-table", action="store_true",
+                        help="Also emit one notebook per reconciled table + an index, next to "
+                             "the combined notebook.")
     args = parser.parse_args(argv)
 
     runner = _build_runner(args.profile, args.warehouse_id)
@@ -86,6 +89,12 @@ def main(argv: list[str] | None = None) -> int:
     write_notebook(result, f"{args.output_path}.ipynb")
     print(build_tldr(result))
     print(f"\nArtifacts: {args.output_path}.json  {args.output_path}.ipynb")
+
+    if args.notebook_per_table and len(result.table_summaries) > 1:
+        tables_dir = f"{args.output_path}_tables"
+        paths = write_notebooks_per_table(result, tables_dir,
+                                          prefix=f"rca_{args.recon_id}")
+        print(f"Per-table notebooks ({len(paths) - 1}) + index in: {tables_dir}")
     return 0
 
 
