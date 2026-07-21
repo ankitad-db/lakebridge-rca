@@ -215,6 +215,123 @@ def _finding_view(f: Finding) -> dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------- #
+# On-demand analysis (one table at a time) — the App's "call the skill" path
+# --------------------------------------------------------------------------- #
+def list_tables(settings: Settings, recon_id: str) -> list[dict[str, Any]]:
+    """Table pairs in a recon run, each flagged with whether it's already analyzed."""
+    analyzed = _analyzed_tables(settings, recon_id)
+    runner = _runner(settings)
+    if runner is not None and settings.recon_catalog:
+        from rca_engine.discovery import list_recon_tables
+
+        tables = list_recon_tables(runner, settings.recon_catalog, settings.recon_schema, recon_id)
+    else:
+        # Demo / no-warehouse: derive the table list from the pre-computed bundle.
+        result = load_result(settings, recon_id)
+        tables = [] if result is None else [{
+            "name": _short(s.target_table), "source_table": s.source_table,
+            "target_table": s.target_table,
+            "has_diffs": bool(s.missing_in_source or s.missing_in_target
+                              or s.absolute_mismatch or not s.schema_ok),
+        } for s in result.table_summaries]
+    for t in tables:
+        t["analyzed"] = t["name"] in analyzed
+    return tables
+
+
+def _analyzed_tables(settings: Settings, recon_id: str) -> set[str]:
+    result = load_result(settings, recon_id)
+    if result is None:
+        return set()
+    return {_short(s.target_table) for s in result.table_summaries}
+
+
+def run_analysis(settings: Settings, recon_id: str, only_table: str) -> RcaResult:
+    """Run the RCA (the same engine the Genie skill runs) for a single table.
+
+    Live when a warehouse is configured: ingest -> classify -> live drill-down, then
+    merge the result into the recon's bundle (so artifacts + the dashboard update).
+    Without a warehouse (demo mode) it replays the pre-computed bundle for that table.
+    """
+    runner = _runner(settings)
+    if runner is not None and settings.recon_catalog:
+        from rca_engine.analyze import analyze
+
+        scoped = analyze(runner, recon_id, settings.recon_catalog, settings.recon_schema,
+                         dialect=settings.dialect, drilldown=True, only_table=only_table)
+        _merge_into_bundle(settings, recon_id, scoped)
+        return scoped
+
+    # Demo replay: slice the bundled result down to the requested table.
+    full = load_result(settings, recon_id)
+    if full is None:
+        raise RuntimeError(f"No warehouse configured and no bundle for '{recon_id}'.")
+    return _slice_result(full, only_table)
+
+
+def _slice_result(result: RcaResult, only_table: str) -> RcaResult:
+    t = only_table.lower()
+    findings = [f for f in result.findings if _short(f.target_table).lower() == t]
+    summaries = [s for s in result.table_summaries if _short(s.target_table).lower() == t]
+    return RcaResult(recon_id=result.recon_id, dialect=result.dialect,
+                     findings=findings, table_summaries=summaries)
+
+
+def _merge_into_bundle(settings: Settings, recon_id: str, scoped: RcaResult) -> None:
+    """Fold a freshly-analyzed table into the recon's on-disk bundle (idempotent per table)."""
+    from rca_engine.report import write_rca_bundle
+
+    if not settings.bundles_dir:
+        return
+    existing = load_result(settings, recon_id)
+    scoped_names = {_short(s.target_table).lower() for s in scoped.table_summaries}
+    findings = list(scoped.findings)
+    summaries = list(scoped.table_summaries)
+    if existing is not None:
+        findings += [f for f in existing.findings if _short(f.target_table).lower() not in scoped_names]
+        summaries += [s for s in existing.table_summaries
+                      if _short(s.target_table).lower() not in scoped_names]
+    merged = RcaResult(recon_id=recon_id, dialect=scoped.dialect,
+                       findings=findings, table_summaries=summaries)
+    try:
+        write_rca_bundle(merged, settings.bundles_dir, recon_id, combined=False)
+    except Exception as exc:  # persistence is best-effort; the view is still returned
+        print(f"[rca] could not persist bundle for {recon_id}: {exc}")
+
+
+def build_table_view(result: RcaResult, table: str) -> dict[str, Any]:
+    """Structured single-table result for the on-demand UI."""
+    t = table.lower()
+    findings = sorted((f for f in result.findings if _short(f.target_table).lower() == t),
+                      key=severity_score, reverse=True)
+    summary = next((s for s in result.table_summaries if _short(s.target_table).lower() == t), None)
+    verdicts: dict[str, int] = {}
+    for f in findings:
+        if f.top_hypothesis:
+            v = f.top_hypothesis.verdict.value
+            verdicts[v] = verdicts.get(v, 0) + 1
+    return {
+        "recon_id": result.recon_id,
+        "table": table,
+        "verdict_meta": _VERDICT_META,
+        "verdict_counts": verdicts,
+        "summary": None if summary is None else {
+            "source_table": summary.source_table,
+            "target_table": summary.target_table,
+            "source_count": summary.source_count,
+            "target_count": summary.target_count,
+            "missing_in_target": summary.missing_in_target,
+            "missing_in_source": summary.missing_in_source,
+            "absolute_mismatch": summary.absolute_mismatch,
+            "row_match_pct": summary.row_match_pct,
+            "schema_ok": summary.schema_ok,
+        },
+        "clean": len(findings) == 0,
+        "findings": [_finding_view(f) for f in findings],
+    }
+
+
 def build_view(result: RcaResult) -> dict[str, Any]:
     findings = sorted(result.findings, key=severity_score, reverse=True)
     fviews = [_finding_view(f) for f in findings]

@@ -116,12 +116,28 @@ def _row_samples(data: Any, limit: int = 200) -> list[MismatchSample]:
     return samples
 
 
+def _matches_table(only_table: str, source_table: str, target_table: str) -> bool:
+    """True if ``only_table`` names this pair (short name or fully-qualified, case-insensitive)."""
+    t = only_table.strip().strip("`").lower()
+    candidates = {
+        source_table.lower(), target_table.lower(),
+        source_table.split(".")[-1].strip("`").lower(),
+        target_table.split(".")[-1].strip("`").lower(),
+    }
+    return t in candidates
+
+
 def ingest_with_summaries(
     runner: QueryRunner,
     recon_id: str,
     recon_catalog: str,
     recon_schema: str,
+    only_table: str | None = None,
 ) -> tuple[list[Finding], list[TableSummary]]:
+    """Ingest one recon run. If ``only_table`` is given, restrict to the single
+    table pair whose source/target name matches (used by the one-table-at-a-time
+    on-demand flow); otherwise ingest every pair in the run."""
+
     base = f"{recon_catalog}.{recon_schema}"
 
     main_rows = runner.query(
@@ -135,6 +151,9 @@ def ingest_with_summaries(
         table_id = m.get("recon_table_id")
         source_table = _fqn(m.get("source_table"))
         target_table = _fqn(m.get("target_table"))
+
+        if only_table and not _matches_table(only_table, source_table, target_table):
+            continue
 
         metrics = runner.query(
             "SELECT recon_metrics.source_record_count AS source_record_count, "

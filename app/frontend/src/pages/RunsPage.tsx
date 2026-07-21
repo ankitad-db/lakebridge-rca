@@ -6,11 +6,17 @@ import type { AppConfig, ReconRun } from "../types";
 export function RunsPage({ config }: { config: AppConfig | null }) {
   const [runs, setRuns] = useState<ReconRun[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reconInput, setReconInput] = useState("");
   const nav = useNavigate();
 
   useEffect(() => {
     api.runs().then(setRuns).catch((e) => setError(String(e.message || e)));
   }, []);
+
+  function go(id: string) {
+    const v = id.trim();
+    if (v) nav(`/analyze/${encodeURIComponent(v)}`);
+  }
 
   return (
     <>
@@ -22,6 +28,24 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
           </div>
         </div>
         {config?.demo_mode && <span className="demo-pill">DEMO · bundled sample data</span>}
+      </div>
+
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <h3>Run RCA on a recon_id</h3>
+        <div className="row" style={{ alignItems: "center", gap: 10 }}>
+          <input
+            className="mono"
+            placeholder="paste a recon_id…"
+            value={reconInput}
+            onChange={(e) => setReconInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && go(reconInput)}
+            style={{
+              flex: 1, minWidth: 260, padding: "9px 12px", borderRadius: 9,
+              border: "1px solid var(--border-2)", background: "var(--panel-2)", color: "var(--text)",
+            }}
+          />
+          <button className="btn primary" onClick={() => go(reconInput)}>▶ Analyze table-by-table</button>
+        </div>
       </div>
 
       {error && <div className="panel" style={{ borderColor: "var(--lava)" }}>⚠️ {error}</div>}
@@ -51,7 +75,7 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
                 <tr
                   key={r.recon_id}
                   className="clickable"
-                  onClick={() => nav(`/runs/${encodeURIComponent(r.recon_id)}`)}
+                  onClick={() => nav(`/analyze/${encodeURIComponent(r.recon_id)}`)}
                 >
                   <td className="mono">{r.recon_id}</td>
                   <td className="muted">{r.started || "—"}</td>
@@ -65,8 +89,17 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
                     )}
                     {r.has_bundle === false && <span className="pill" style={{ marginLeft: 8 }}>no bundle</span>}
                   </td>
-                  <td className="num">
-                    <span className="btn">Analyze →</span>
+                  <td className="num" onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button className="btn primary" onClick={() => nav(`/analyze/${encodeURIComponent(r.recon_id)}`)}>
+                        ▶ Run RCA
+                      </button>
+                      {r.has_bundle !== false && (
+                        <button className="btn" onClick={() => nav(`/runs/${encodeURIComponent(r.recon_id)}`)}>
+                          Dashboard
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

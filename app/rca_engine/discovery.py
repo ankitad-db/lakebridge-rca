@@ -64,6 +64,54 @@ def list_recon_runs(
     return runs
 
 
+def list_recon_tables(
+    runner: QueryRunner,
+    recon_catalog: str,
+    recon_schema: str,
+    recon_id: str,
+) -> list[dict[str, Any]]:
+    """List the table pairs in one recon run so the user can pick one to analyze.
+
+    Each entry: ``name`` (target short name), ``source_table``, ``target_table``,
+    and a ``has_diffs`` rollup from ``metrics`` (``None`` if the metrics shape differs).
+    """
+    from rca_engine.ingest import _fqn  # local import to avoid a cycle at module load
+
+    base = f"{recon_catalog}.{recon_schema}"
+    rows = runner.query(
+        "SELECT recon_table_id, source_table, target_table "
+        f"FROM {base}.main WHERE recon_id = '{recon_id}'"
+    )
+    tables: list[dict[str, Any]] = []
+    for r in rows:
+        source_table = _fqn(r.get("source_table"))
+        target_table = _fqn(r.get("target_table"))
+        name = target_table.split(".")[-1].strip("`") or source_table.split(".")[-1].strip("`")
+        tables.append({
+            "name": name,
+            "source_table": source_table,
+            "target_table": target_table,
+            "has_diffs": _table_has_diffs(runner, base, r.get("recon_table_id")),
+        })
+    tables.sort(key=lambda t: t["name"])
+    return tables
+
+
+def _table_has_diffs(runner: QueryRunner, base: str, table_id: Any) -> bool | None:
+    if table_id is None:
+        return None
+    try:
+        rows = runner.query(
+            "SELECT (recon_metrics.row_comparison.missing_in_source > 0 OR "
+            "recon_metrics.row_comparison.missing_in_target > 0 OR "
+            "recon_metrics.column_comparison.absolute_mismatch > 0) AS d "
+            f"FROM {base}.metrics WHERE recon_table_id = {table_id}"
+        )
+        return bool(rows[0].get("d")) if rows else False
+    except Exception:
+        return None
+
+
 def _tables_with_diffs(runner: QueryRunner, base: str, recon_id: str) -> int:
     """Count table pairs in this run that have any row/column/schema difference."""
     try:

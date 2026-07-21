@@ -72,6 +72,36 @@ export interface TableView {
   clean: boolean;
 }
 
+export interface TableRef {
+  name: string;
+  source_table: string;
+  target_table: string;
+  has_diffs: boolean | null;
+  analyzed: boolean;
+}
+
+export interface TableSummaryView {
+  source_table: string;
+  target_table: string;
+  source_count: number;
+  target_count: number;
+  missing_in_target: number;
+  missing_in_source: number;
+  absolute_mismatch: number;
+  row_match_pct: number;
+  schema_ok: boolean;
+}
+
+export interface TableAnalysis {
+  recon_id: string;
+  table: string;
+  verdict_meta: Record<string, { icon: string; label: string; action: string }>;
+  verdict_counts: Record<string, number>;
+  summary: TableSummaryView | null;
+  clean: boolean;
+  findings: FindingView[];
+}
+
 export interface RunView {
   recon_id: string;
   dialect: string;

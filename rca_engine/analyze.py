@@ -35,8 +35,14 @@ def analyze(
     drilldown: bool = True,
     mapping: dict | None = None,
     use_lineage: bool = False,
+    only_table: str | None = None,
 ) -> RcaResult:
-    findings, summaries = ingest_with_summaries(runner, recon_id, recon_catalog, recon_schema)
+    """Run the end-to-end RCA for a recon run. ``only_table`` scopes the analysis to a
+    single table pair (one-table-at-a-time); leave ``None`` to analyze the whole run."""
+
+    findings, summaries = ingest_with_summaries(
+        runner, recon_id, recon_catalog, recon_schema, only_table=only_table
+    )
     if mapping:
         _apply_mapping(summaries, mapping)
     findings = classify_all(findings, dialect=dialect, mapping=mapping)
