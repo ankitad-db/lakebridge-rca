@@ -7,7 +7,7 @@ on top to raise confidence or resolve NEEDS_REVIEW findings.
 from __future__ import annotations
 
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from rca_engine.knowledge import KnowledgeBase, load_kb
 from rca_engine.models import (
@@ -50,17 +50,29 @@ def _verdict_for(category: RootCauseCategory, strength: float, provenance: bool)
 
 
 def _probe_evidence(signals: list[ProbeSignal], sampled_rows: int) -> list[Evidence]:
-    """Collapse repeated probe signals (the same pattern fires on many sampled rows)
-    into distinct evidence lines, folding the repeat count into the detail so the UI
-    shows how broadly the pattern held instead of listing the identical line N times."""
-    counts = Counter(s.detail for s in signals)
-    evidence: list[Evidence] = []
-    seen: set[str] = set()
+    """Collapse probe signals that describe the *same* mechanism into one evidence
+    line each. Signals are grouped by semantic ``kind`` (falling back to the exact
+    detail text), so two differently-worded rounding signals become a single line.
+    Within a group we keep the strongest wording and fold in how many sampled rows
+    matched, instead of listing near-identical lines N times."""
+    groups: dict[tuple, dict] = {}
+    order: list[tuple] = []
     for s in signals:
-        if s.detail in seen:
-            continue
-        seen.add(s.detail)
-        n = counts[s.detail]
+        key = (s.category, s.kind or s.detail)
+        g = groups.get(key)
+        if g is None:
+            groups[key] = {"best": s, "count": 1}
+            order.append(key)
+        else:
+            g["count"] += 1
+            if s.strength > g["best"].strength:
+                g["best"] = s
+
+    evidence: list[Evidence] = []
+    for key in order:
+        g = groups[key]
+        s = g["best"]
+        n = g["count"]
         detail = s.detail
         if n > 1:
             shown = min(n, sampled_rows) if sampled_rows else n

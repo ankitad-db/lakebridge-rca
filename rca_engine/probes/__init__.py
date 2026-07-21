@@ -22,6 +22,10 @@ class ProbeSignal:
     strength: float
     detail: str
     meta: dict[str, Any] = field(default_factory=dict)
+    # Stable semantic key for the mechanism (e.g. "round_whole_units"). Signals that
+    # share a kind describe the *same* root cause even if worded differently, so the
+    # classifier collapses them into one evidence line. Defaults to the detail text.
+    kind: str = ""
 
 
 from rca_engine.probes import complex as complex_probe  # noqa: E402

@@ -52,6 +52,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                         detail=f"Target equals source wrapped to a {bits}-bit signed integer; "
                         f"integer overflow (source NUMBER/BIGINT migrated to a narrower INT).",
                         meta={"source": str(s), "target": str(t), "bits": bits},
+                        kind="int_overflow",
                     )
                 )
                 return signals
@@ -72,6 +73,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                         detail="Target equals source rounded to whole units; consistent with a "
                         "ROUND() precision/rounding-mode difference in the translated aggregation.",
                         meta={"source": str(s), "target": str(t), "scale": min_scale},
+                        kind="round_whole_units",
                     )
                 )
             else:
@@ -82,6 +84,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                         detail=f"Values equal after rounding to scale {min_scale}; "
                         f"likely precision/scale loss (e.g. NUMBER(p,s) migrated to a lower scale/DOUBLE).",
                         meta={"source": str(s), "target": str(t), "scale": min_scale},
+                        kind="scale_loss",
                     )
                 )
     except InvalidOperation:
@@ -101,6 +104,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                     detail="Target is rounded to whole units while source has a fractional part; "
                     "consistent with a ROUND() precision/rounding-mode difference in the transform.",
                     meta={"source": str(s), "target": str(t), "relative_diff": str(rel)},
+                    kind="round_whole_units",
                 )
             )
         elif Decimal("0") < rel < Decimal("1e-6"):
@@ -111,6 +115,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                     detail=f"Very small relative difference ({rel:.2e}); "
                     f"consistent with float representation or aggregation ordering.",
                     meta={"relative_diff": str(rel)},
+                    kind="float_precision",
                 )
             )
         elif Decimal("0") < rel < Decimal("1e-3"):
@@ -120,6 +125,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                     strength=0.6,
                     detail=f"Small relative difference ({rel:.2e}); likely rounding or scale loss.",
                     meta={"relative_diff": str(rel)},
+                    kind="small_relative_diff",
                 )
             )
 
@@ -135,6 +141,7 @@ def probe(source_value: Any, target_value: Any) -> list[ProbeSignal]:
                         detail=f"Source is exactly {factor}x target; possible unit/scale "
                         f"or cast error in the transformation.",
                         meta={"factor": str(factor)},
+                        kind="constant_factor",
                     )
                 )
                 break
