@@ -31,9 +31,20 @@ migration/
   pipeline/22_gold_aggregate.sql        # gold daily aggregate (transpilation defect)
   pipeline/23_incremental_merge.py      # incremental MERGE (watermark defect)
   pipeline/databricks.yml               # Asset Bundle Job orchestrating the above
-  recon/30_reconcile_config.json        # Lakebridge table-mapping config (6 pairs)
-  scenarios.md                          # ground-truth manifest of the 10 defects
+  recon/30_reconcile_config.json        # Lakebridge table-mapping config (all pairs)
+  scenarios.md / scenarios.yaml         # ground-truth manifest / machine-readable oracle
+  edge_cases/                           # comprehensive edge-case source + target tables
+  pilot/                                # authentic pilot migration scripts (see below)
 ```
+
+## Pilot migration scripts (`pilot/`)
+
+Authentic, per-object **Snowflake source** and **migrated Databricks target** scripts for the
+retail pilot — the code-aware inputs for the RCA. `source_snowflake/` holds true Snowflake-dialect
+DDL/seed (declared types like `NUMBER(18,4)`, `TIMESTAMP_LTZ`, `VARIANT`); `target_databricks/`
+holds the migrated `INSERT … SELECT` transforms (carrying the injected defects). See
+[`pilot/README.md`](pilot/README.md). Lakebridge owns the source connection for reconcile, so no
+connection setup is included here.
 
 ## Setup (manual, in order)
 

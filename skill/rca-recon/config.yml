@@ -40,11 +40,19 @@ output_dir: rca_notebooks
 # Optional: explicit PER-TABLE script manifest (most robust — removes any file<->table
 # ambiguity of the folder scans above). Point each target table at its own source and
 # migrated (target) SQL. Overrides the folder scans for the tables listed.
+#
+# A ready-made example for the bundled pilot migration lives at
+# migration/pilot/table_manifest.yml (6 core tables, Snowflake source <-> Databricks
+# target). Copy its `tables:` block here, or upload the pilot scripts and point the
+# folder scans at them instead:
+#   source_scripts_dir:    <.../pilot/source_snowflake>   # authentic Snowflake DDL
+#   transpiled_output_dir: <.../pilot/target_databricks>  # migrated Databricks scripts
+#
 # tables:
 #   - target: fact_orders
-#     source: fact_orders                 # optional; defaults to target
-#     source_script: .../fact_orders_snowflake.sql   # declared source types
-#     target_script: .../fact_orders_databricks.sql  # migrated transform
+#     source: FACT_ORDERS                 # optional; defaults to target
+#     source_script: .../pilot/source_snowflake/fact_orders.sql   # declared source types
+#     target_script: .../pilot/target_databricks/fact_orders.sql  # migrated transform
 #     join_keys: [order_id]               # optional override
 #     date_column: order_ts               # optional override
 

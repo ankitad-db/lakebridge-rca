@@ -1,0 +1,49 @@
+# Pilot per-table manifest — ties each target table to its Snowflake SOURCE script and
+# its migrated Databricks TARGET script. This is the most robust way to feed the RCA's
+# code-aware correlation: no folder<->table ambiguity, and per-table join keys.
+#
+# Use it either:
+#   - in the skill's config.yml as the `tables:` block, or
+#   - via the CLI: `python -m rca_engine.cli ... --table-manifest migration/pilot/table_manifest.yml`
+#
+# `source_script` = declared source types (NUMBER(18,4), TIMESTAMP_LTZ, VARIANT, ...).
+# `target_script` = the migrated transform (per-column derivations, load filters).
+
+tables:
+  - target: dim_store
+    source: DIM_STORE
+    source_script: migration/pilot/source_snowflake/dim_store.sql
+    target_script: migration/pilot/target_databricks/dim_store.sql
+    join_keys: [store_id]
+
+  - target: dim_product
+    source: DIM_PRODUCT
+    source_script: migration/pilot/source_snowflake/dim_product.sql
+    target_script: migration/pilot/target_databricks/dim_product.sql
+    join_keys: [product_id]
+
+  - target: dim_customer
+    source: DIM_CUSTOMER
+    source_script: migration/pilot/source_snowflake/dim_customer.sql
+    target_script: migration/pilot/target_databricks/dim_customer.sql
+    join_keys: [customer_id]
+
+  - target: fact_orders
+    source: FACT_ORDERS
+    source_script: migration/pilot/source_snowflake/fact_orders.sql
+    target_script: migration/pilot/target_databricks/fact_orders.sql
+    join_keys: [order_id]
+    date_column: order_ts
+
+  - target: fact_order_items
+    source: FACT_ORDER_ITEMS
+    source_script: migration/pilot/source_snowflake/fact_order_items.sql
+    target_script: migration/pilot/target_databricks/fact_order_items.sql
+    join_keys: [order_item_id]
+
+  - target: agg_daily_sales
+    source: AGG_DAILY_SALES
+    source_script: migration/pilot/source_snowflake/agg_daily_sales.sql
+    target_script: migration/pilot/target_databricks/agg_daily_sales.sql
+    join_keys: [store_id, sales_date]
+    date_column: sales_date

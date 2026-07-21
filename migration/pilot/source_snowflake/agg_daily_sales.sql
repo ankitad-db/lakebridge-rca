@@ -1,0 +1,14 @@
+-- PILOT SOURCE (Snowflake) — RETAIL.SOURCE.AGG_DAILY_SALES
+-- Gold aggregate business logic that must be transpiled faithfully to Spark SQL.
+-- REVENUE is an exact NUMBER(18,2) SUM (no rounding to whole units).
+
+CREATE SCHEMA IF NOT EXISTS RETAIL.SOURCE;
+
+CREATE OR REPLACE TABLE RETAIL.SOURCE.AGG_DAILY_SALES AS
+SELECT
+  STORE_ID,
+  TO_DATE(ORDER_TS)                       AS SALES_DATE,
+  CAST(SUM(ORDER_TOTAL) AS NUMBER(18,2))  AS REVENUE,
+  COUNT(*)                                AS ORDER_COUNT
+FROM RETAIL.SOURCE.FACT_ORDERS
+GROUP BY STORE_ID, TO_DATE(ORDER_TS);
