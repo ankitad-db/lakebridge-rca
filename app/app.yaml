@@ -17,6 +17,14 @@ env:
   - name: RCA_DIALECT
     value: "snowflake"
 
+  # Default source/target schemas prefilled in the "Trigger recon" form. The app
+  # writes new recon runs into RCA_RECON_CATALOG.RCA_RECON_SCHEMA, so the SP needs
+  # SELECT on these schemas and MODIFY on the reconcile schema.
+  - name: RCA_SOURCE_SCHEMA
+    value: "mig_source_sim"
+  - name: RCA_TARGET_SCHEMA
+    value: "mig_target"
+
   # SQL warehouse used for live discovery + per-table RCA. The app's service
   # principal needs "Can use" on this warehouse and SELECT on the recon +
   # source/target schemas.

@@ -27,7 +27,10 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
             Pick a Lakebridge reconcile run to analyze. Root cause, verdict, and fix per finding.
           </div>
         </div>
-        {config?.demo_mode && <span className="demo-pill">DEMO · bundled sample data</span>}
+        <div className="row" style={{ gap: 10, alignItems: "center" }}>
+          {config?.demo_mode && <span className="demo-pill">DEMO · bundled sample data</span>}
+          <button className="btn primary" onClick={() => nav("/trigger")}>⚡ Trigger new recon</button>
+        </div>
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>
@@ -54,7 +57,10 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
       )}
       {runs && runs.length === 0 && (
         <div className="panel center-msg">
-          No reconcile runs found. Run <code>databricks labs lakebridge reconcile</code> first.
+          No reconcile runs found. Run <code>databricks labs lakebridge reconcile</code>, or{" "}
+          <button className="btn primary" style={{ marginLeft: 8 }} onClick={() => nav("/trigger")}>
+            ⚡ Trigger one here
+          </button>
         </div>
       )}
       {runs && runs.length > 0 && (

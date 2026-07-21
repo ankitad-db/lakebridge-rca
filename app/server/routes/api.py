@@ -23,6 +23,24 @@ class FullRunRequest(BaseModel):
     notebook_dir: str | None = None
 
 
+class ReconTablePair(BaseModel):
+    source: str
+    target: str | None = None
+    join_keys: list[str] | None = None
+    column_mapping: dict[str, str] | None = None
+
+
+class ReconTriggerRequest(BaseModel):
+    source_schema: str | None = None
+    target_schema: str | None = None
+    tables: list[ReconTablePair]
+    auto_analyze: bool = True
+    drilldown: bool = True
+    notebook_dir: str | None = None
+    sample_limit: int = 100
+    max_key_tries: int = 8
+
+
 @router.get("/config")
 def get_config():
     s = load_settings()
@@ -36,7 +54,35 @@ def get_config():
         "demo_mode": not s.has_warehouse,
         "workspace_host": svc.workspace_host(),
         "notebook_dir": s.notebook_dir,
+        "source_schema": s.source_schema,
+        "target_schema": s.target_schema,
     }
+
+
+@router.get("/schemas")
+def get_schemas():
+    """Schemas in the recon catalog (for the trigger-recon form)."""
+    return {"schemas": svc.list_schemas(load_settings())}
+
+
+@router.get("/schemas/{schema}/tables")
+def get_schema_tables(schema: str):
+    """Tables in a schema of the recon catalog (for the trigger-recon form)."""
+    return {"schema": schema, "tables": svc.list_schema_tables(load_settings(), schema)}
+
+
+@router.post("/recon/trigger")
+def trigger_recon(req: ReconTriggerRequest):
+    """Trigger an app-native reconcile (auto-detect keys, auto-fix, then RCA).
+    Returns a token immediately; poll GET /recon/job/{token}."""
+    payload = req.model_dump()
+    return svc.start_recon(load_settings(), payload)
+
+
+@router.get("/recon/job/{token}")
+def get_recon_job(token: str):
+    """Status of a triggered reconcile job (phase, per-pair results, recon_id, link)."""
+    return svc.recon_job_status(token)
 
 
 @router.get("/runs")

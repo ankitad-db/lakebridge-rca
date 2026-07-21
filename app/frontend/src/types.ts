@@ -8,6 +8,47 @@ export interface AppConfig {
   demo_mode: boolean;
   workspace_host: string;
   notebook_dir: string;
+  source_schema: string;
+  target_schema: string;
+}
+
+export interface ReconPairInput {
+  source: string;
+  target: string;
+  join_keys: string;        // comma-separated in the form
+  column_mapping: string;   // "src:tgt, src2:tgt2" in the form
+}
+
+export interface ReconPairResult {
+  source_table: string;
+  target_table: string;
+  status: "ok" | "error";
+  message: string;
+  join_keys: string[];
+  keys_origin: string;
+  source_count: number;
+  target_count: number;
+  missing_in_target: number;
+  missing_in_source: number;
+  absolute_mismatch: number;
+  mismatch_columns: string[];
+  schema_ok: boolean;
+}
+
+export interface ReconJob {
+  state: "idle" | "running" | "done" | "error";
+  phase?: "reconciling" | "analyzing" | "done";
+  token?: string;
+  message?: string;
+  done?: number;
+  total?: number;
+  pairs?: ReconPairResult[];
+  recon_id?: string | null;
+  dashboard?: string;
+  notebook_path?: string | null;
+  notebook_url?: string | null;
+  tables?: number;
+  findings?: number;
 }
 
 export interface JobStatus {

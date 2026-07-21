@@ -1,4 +1,12 @@
-import type { AppConfig, JobStatus, ReconRun, RunView, TableAnalysis, TableRef } from "./types";
+import type {
+  AppConfig,
+  JobStatus,
+  ReconJob,
+  ReconRun,
+  RunView,
+  TableAnalysis,
+  TableRef,
+} from "./types";
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -34,4 +42,9 @@ export const api = {
     post<JobStatus>(`/api/runs/${encodeURIComponent(id)}/analyze-all`, { drilldown, notebook_dir }),
   job: (id: string) => get<JobStatus>(`/api/runs/${encodeURIComponent(id)}/job`),
   summaryUrl: (id: string) => `/api/runs/${encodeURIComponent(id)}/summary`,
+  schemas: () => get<{ schemas: string[] }>("/api/schemas").then((r) => r.schemas),
+  schemaTables: (schema: string) =>
+    get<{ tables: string[] }>(`/api/schemas/${encodeURIComponent(schema)}/tables`).then((r) => r.tables),
+  triggerRecon: (body: unknown) => post<ReconJob>("/api/recon/trigger", body),
+  reconJob: (token: string) => get<ReconJob>(`/api/recon/job/${encodeURIComponent(token)}`),
 };

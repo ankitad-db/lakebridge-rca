@@ -11,6 +11,10 @@ optionally run a live analysis. It never re-implements engine logic.
 
 ## Pages
 - **Recon runs** — recent reconcile runs (via `list_recon_runs`); pick one.
+- **Trigger recon** — start a reconciliation from the app: pick source/target schemas, tick the
+  tables (or add pairs), and run. Join keys are **auto-detected** when omitted, renamed columns are
+  handled via a `src:tgt` mapping, and each pair is isolated so one failure never sinks the run. It
+  writes a fresh `recon_id` and (by default) continues straight into the full RCA + notebooks.
 - **Run dashboard** — KPI tiles (overall row match %, verdict counts), verdict-distribution
   donut, **🔺 Top priorities** (severity-ranked), and a per-table scorecard (worst first).
   **▶ Run full RCA & generate notebook** analyzes every table in the run (background job) and
@@ -18,6 +22,16 @@ optionally run a live analysis. It never re-implements engine logic.
 - **Analyze (table-by-table)** — run the engine live for one table at a time (fast, ~5s each).
 - **Table drill-down** — every finding for a table: severity, verdict, root cause, remediation,
   owner, the 5-source evidence + confirming query, and sample diffs.
+
+### Trigger a reconcile (app-native)
+`Trigger recon` calls `POST /api/recon/trigger` (returns a token; poll `GET /api/recon/job/{token}`),
+which runs `rca_engine.reconcile` on the SQL warehouse — comparing source vs. target and writing
+Lakebridge-compatible `main`/`metrics`/`details` rows under a new `recon_id` in
+`RCA_RECON_CATALOG.RCA_RECON_SCHEMA`. Works whenever both sides are query-able from the warehouse
+(the retail test bed keeps `mig_source_sim` + `mig_target` in one catalog). The SP needs **MODIFY**
+on the reconcile schema and **SELECT** on the source/target schemas. `GET /api/schemas` and
+`GET /api/schemas/{schema}/tables` back the form's pickers. Defaults come from `RCA_SOURCE_SCHEMA`
+/ `RCA_TARGET_SCHEMA`.
 
 ### Full-run RCA + workspace notebooks
 `Run full RCA` calls `POST /api/runs/{id}/analyze-all`, which runs the whole run in a background
@@ -71,6 +85,7 @@ every scenario and the ✅ clean path.
 | `RCA_WAREHOUSE_ID` | SQL warehouse for live discovery/reads (bind a warehouse resource) |
 | `RCA_BUNDLES_DIR` | Folder of pre-computed bundles (a UC Volume in-workspace, or writable scratch) |
 | `RCA_NOTEBOOK_DIR` | Workspace folder the full-run action publishes notebooks into (SP needs CAN_MANAGE) |
+| `RCA_SOURCE_SCHEMA` / `RCA_TARGET_SCHEMA` | Defaults prefilled in the Trigger-recon form (SP needs SELECT on both; MODIFY on the reconcile schema) |
 | `RCA_DIALECT` | Source dialect (default `snowflake`) |
 | `RCA_ALLOW_ONDEMAND` | `true` to let the dashboard compute a full run on load without a bundle |
 

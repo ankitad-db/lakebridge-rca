@@ -7,6 +7,7 @@ import { RunsPage } from "./pages/RunsPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { TablePage } from "./pages/TablePage";
 import { AnalyzePage } from "./pages/AnalyzePage";
+import { TriggerReconPage } from "./pages/TriggerReconPage";
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -19,6 +20,7 @@ export default function App() {
     <Layout config={config}>
       <Routes>
         <Route path="/" element={<RunsPage config={config} />} />
+        <Route path="/trigger" element={<TriggerReconPage config={config} />} />
         <Route path="/analyze/:reconId" element={<AnalyzePage />} />
         <Route path="/runs/:reconId" element={<OverviewPage />} />
         <Route path="/runs/:reconId/:table" element={<TablePage />} />

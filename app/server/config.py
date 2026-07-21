@@ -23,6 +23,8 @@ class Settings:
     dialect: str = "snowflake"
     bundles_dir: str = ""          # where pre-computed RCA bundles live (UC Volume or local)
     notebook_dir: str = ""         # workspace folder to publish generated RCA notebooks into
+    source_schema: str = ""        # default source schema for the trigger-recon form
+    target_schema: str = ""        # default target schema for the trigger-recon form
     profile: str = ""              # local CLI profile (ignored in-app)
     allow_ondemand: bool = False   # allow the app to run analyze() live (P2); off by default
 
@@ -40,6 +42,8 @@ def load_settings() -> Settings:
         dialect=os.environ.get("RCA_DIALECT", "snowflake"),
         bundles_dir=os.environ.get("RCA_BUNDLES_DIR", os.path.join(here, "bundles")),
         notebook_dir=os.environ.get("RCA_NOTEBOOK_DIR", ""),
+        source_schema=os.environ.get("RCA_SOURCE_SCHEMA", ""),
+        target_schema=os.environ.get("RCA_TARGET_SCHEMA", ""),
         profile=os.environ.get("DATABRICKS_PROFILE", ""),
         allow_ondemand=os.environ.get("RCA_ALLOW_ONDEMAND", "").lower() in ("1", "true", "yes"),
     )

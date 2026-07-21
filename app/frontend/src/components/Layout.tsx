@@ -19,6 +19,9 @@ export function Layout({ config, children }: { config: AppConfig | null; childre
           <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
             📥 Recon runs
           </NavLink>
+          <NavLink to="/trigger" className={({ isActive }) => (isActive ? "active" : "")}>
+            ⚡ Trigger recon
+          </NavLink>
           <a className={onRun ? "active" : ""} style={{ opacity: onRun ? 1 : 0.5 }}>
             📊 Run dashboard
           </a>

@@ -11,6 +11,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from typing import Any, Optional
 
 from rca_engine.models import Finding, RcaResult, ReconType, TableSummary, Verdict
@@ -72,6 +73,38 @@ def list_runs(settings: Settings) -> list[dict[str, Any]]:
         except Exception as exc:  # degrade to bundles rather than 500
             print(f"[rca] live discovery failed, using on-disk bundles: {exc}")
     return _runs_from_bundles(settings)
+
+
+def list_schemas(settings: Settings) -> list[str]:
+    """Schemas in the recon catalog (for the trigger-recon form). Best-effort."""
+    runner = _runner(settings)
+    if runner is None or not settings.recon_catalog:
+        return []
+    try:
+        rows = runner.query(
+            f"SELECT schema_name FROM `{settings.recon_catalog}`.information_schema.schemata "
+            "ORDER BY schema_name"
+        )
+        return [str(r.get("schema_name")) for r in rows if r.get("schema_name")]
+    except Exception:
+        return []
+
+
+def list_schema_tables(settings: Settings, schema: str) -> list[str]:
+    """Table names in a schema of the recon catalog. Best-effort."""
+    runner = _runner(settings)
+    if runner is None or not settings.recon_catalog or not schema:
+        return []
+    try:
+        safe = schema.replace("'", "''")
+        rows = runner.query(
+            "SELECT table_name FROM "
+            f"`{settings.recon_catalog}`.information_schema.tables "
+            f"WHERE table_schema = '{safe}' ORDER BY table_name"
+        )
+        return [str(r.get("table_name")) for r in rows if r.get("table_name")]
+    except Exception:
+        return []
 
 
 def _bundles_on_disk(settings: Settings) -> set[str]:
@@ -488,39 +521,150 @@ def start_full_run(settings: Settings, recon_id: str, drilldown: bool = True,
         return dict(_JOBS[recon_id])
 
 
-def _run_full(settings: Settings, recon_id: str, drilldown: bool,
-              notebook_dir: str | None = None) -> None:
+def _analyze_publish(settings: Settings, recon_id: str, drilldown: bool,
+                     notebook_dir: str | None = None) -> dict[str, Any]:
+    """Analyze the whole run, persist the bundle (so the dashboard is populated), and
+    publish notebooks. Returns a status dict (shared by the full-run and recon jobs)."""
     from rca_engine.analyze import analyze
     from rca_engine.report import write_rca_bundle
 
+    result = analyze(_runner(settings), recon_id, settings.recon_catalog,
+                     settings.recon_schema, dialect=settings.dialect, drilldown=drilldown)
     try:
-        result = analyze(_runner(settings), recon_id, settings.recon_catalog,
-                         settings.recon_schema, dialect=settings.dialect, drilldown=drilldown)
-        try:
-            write_rca_bundle(result, settings.bundles_dir, recon_id, combined=False)
-        except Exception as exc:  # dashboard can still read; log and continue
-            print(f"[rca] local bundle write failed for {recon_id}: {exc}")
-        notebook_path, publish_error = None, None
-        try:
-            notebook_path = publish_notebooks(settings, recon_id, result, notebook_dir=notebook_dir)
-        except Exception as exc:
-            publish_error = str(exc)
-            print(f"[rca] notebook publish failed for {recon_id}: {exc}")
-        with _JOBS_LOCK:
-            _JOBS[recon_id] = {
-                "state": "done",
-                "message": ("Full RCA complete." if notebook_path
-                            else f"RCA complete; notebook publish failed: {publish_error}"),
-                "notebook_path": notebook_path,
-                "notebook_url": (f"{get_workspace_host()}/#workspace{notebook_path}"
-                                 if notebook_path and get_workspace_host() else None),
-                "tables": len(result.table_summaries),
-                "findings": len(result.findings),
-                "finished": time.time(),
-            }
+        write_rca_bundle(result, settings.bundles_dir, recon_id, combined=False)
+    except Exception as exc:  # dashboard can still read live; log and continue
+        print(f"[rca] local bundle write failed for {recon_id}: {exc}")
+    notebook_path, publish_error = None, None
+    try:
+        notebook_path = publish_notebooks(settings, recon_id, result, notebook_dir=notebook_dir)
     except Exception as exc:
-        with _JOBS_LOCK:
-            _JOBS[recon_id] = {"state": "error", "message": str(exc), "finished": time.time()}
+        publish_error = str(exc)
+        print(f"[rca] notebook publish failed for {recon_id}: {exc}")
+    return {
+        "state": "done",
+        "message": ("Full RCA complete." if notebook_path
+                    else f"RCA complete; notebook publish failed: {publish_error}"),
+        "notebook_path": notebook_path,
+        "notebook_url": (f"{get_workspace_host()}/#workspace{notebook_path}"
+                         if notebook_path and get_workspace_host() else None),
+        "tables": len(result.table_summaries),
+        "findings": len(result.findings),
+        "finished": time.time(),
+    }
+
+
+def _run_full(settings: Settings, recon_id: str, drilldown: bool,
+              notebook_dir: str | None = None) -> None:
+    try:
+        status = _analyze_publish(settings, recon_id, drilldown, notebook_dir)
+    except Exception as exc:
+        status = {"state": "error", "message": str(exc), "finished": time.time()}
+    with _JOBS_LOCK:
+        _JOBS[recon_id] = status
+
+
+# --------------------------------------------------------------------------- #
+# Trigger a reconcile from the app (auto-detect keys, auto-fix, then RCA)
+# --------------------------------------------------------------------------- #
+_RECON_JOBS: dict[str, dict[str, Any]] = {}
+_RECON_LOCK = threading.Lock()
+
+
+def recon_job_status(token: str) -> dict[str, Any]:
+    with _RECON_LOCK:
+        return dict(_RECON_JOBS.get(token) or {"state": "idle"})
+
+
+def start_recon(settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:
+    """Kick off (background) an app-native reconcile of the requested table pairs,
+    then optionally continue into the full RCA. Returns a ``token`` to poll via
+    ``recon_job_status``."""
+    if not (settings.has_warehouse and settings.recon_catalog):
+        return {"state": "error", "message": "No warehouse/catalog configured to run a reconcile."}
+    tables = payload.get("tables") or []
+    if not tables:
+        return {"state": "error", "message": "No tables provided."}
+    token = uuid.uuid4().hex
+    with _RECON_LOCK:
+        _RECON_JOBS[token] = {"state": "running", "phase": "reconciling", "token": token,
+                              "message": "Starting reconcile…", "done": 0, "total": len(tables),
+                              "pairs": [], "recon_id": None, "started": time.time()}
+    threading.Thread(target=_run_recon, args=(settings, token, payload), daemon=True).start()
+    return recon_job_status(token)
+
+
+def _run_recon(settings: Settings, token: str, payload: dict[str, Any]) -> None:
+    from rca_engine.reconcile import TablePairSpec, run_reconcile
+
+    def _set(**kw):
+        with _RECON_LOCK:
+            _RECON_JOBS[token] = {**_RECON_JOBS.get(token, {}), **kw}
+
+    try:
+        catalog = settings.recon_catalog
+        src_schema = (payload.get("source_schema") or settings.source_schema or "").strip()
+        tgt_schema = (payload.get("target_schema") or settings.target_schema or "").strip()
+        if not src_schema or not tgt_schema:
+            _set(state="error", message="source_schema and target_schema are required.",
+                 finished=time.time())
+            return
+        specs = [
+            TablePairSpec(
+                source_table=(t.get("source") or t.get("source_table") or "").strip(),
+                target_table=(t.get("target") or t.get("target_table") or "").strip(),
+                join_keys=[k for k in (t.get("join_keys") or []) if k],
+                column_mapping={k: v for k, v in (t.get("column_mapping") or {}).items() if k and v},
+            )
+            for t in payload.get("tables", [])
+            if (t.get("source") or t.get("source_table"))
+        ]
+
+        def _progress(done: int, total: int, pair) -> None:
+            with _RECON_LOCK:
+                job = _RECON_JOBS.get(token, {})
+                pairs = job.get("pairs", []) + [pair.to_dict()]
+                _RECON_JOBS[token] = {**job, "done": done, "total": total, "pairs": pairs,
+                                      "message": f"Reconciled {done}/{total}: {pair.source_table} "
+                                                 f"({pair.status})"}
+
+        result = run_reconcile(
+            _runner(settings), catalog, src_schema, tgt_schema, specs,
+            recon_schema=settings.recon_schema,
+            sample_limit=int(payload.get("sample_limit", 100)),
+            max_key_tries=int(payload.get("max_key_tries", 8)),
+            progress=_progress,
+        )
+        summary = result.to_dict()
+        ok = summary["pairs_ok"]
+        if ok == 0:
+            _set(state="error", phase="reconciling", recon_id=None, pairs=summary["pairs"],
+                 message="Reconcile produced no comparable pairs — see per-table errors.",
+                 finished=time.time())
+            return
+        dashboard = f"/runs/{result.recon_id}"
+        _set(phase="analyzing", recon_id=result.recon_id, pairs=summary["pairs"],
+             dashboard=dashboard, message=f"Reconcile complete ({ok} pair(s)). Running RCA…")
+
+        if payload.get("auto_analyze", True):
+            try:
+                status = _analyze_publish(settings, result.recon_id,
+                                          drilldown=bool(payload.get("drilldown", True)),
+                                          notebook_dir=payload.get("notebook_dir"))
+                _set(state="done", phase="done", recon_id=result.recon_id, dashboard=dashboard,
+                     pairs=summary["pairs"], notebook_path=status.get("notebook_path"),
+                     notebook_url=status.get("notebook_url"), tables=status.get("tables"),
+                     findings=status.get("findings"), finished=time.time(),
+                     message=f"Done — reconciled {ok} pair(s), RCA complete. {status.get('message', '')}")
+            except Exception as exc:
+                _set(state="done", phase="done", recon_id=result.recon_id, dashboard=dashboard,
+                     pairs=summary["pairs"], finished=time.time(),
+                     message=f"Reconcile complete ({ok} pair(s)); RCA failed: {exc}")
+        else:
+            _set(state="done", phase="done", recon_id=result.recon_id, dashboard=dashboard,
+                 pairs=summary["pairs"], finished=time.time(),
+                 message=f"Reconcile complete — {ok} pair(s). recon_id ready.")
+    except Exception as exc:
+        _set(state="error", message=str(exc), finished=time.time())
 
 
 def build_view(result: RcaResult) -> dict[str, Any]:
