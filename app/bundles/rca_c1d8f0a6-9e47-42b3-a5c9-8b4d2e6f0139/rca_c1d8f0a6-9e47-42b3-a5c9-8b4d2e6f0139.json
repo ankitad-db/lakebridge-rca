@@ -1,0 +1,97 @@
+{
+  "recon_id": "c1d8f0a6-9e47-42b3-a5c9-8b4d2e6f0139",
+  "dialect": "snowflake",
+  "findings": [],
+  "table_summaries": [
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_order_items",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_order_items",
+      "source_count": 2000,
+      "target_count": 2000,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_orders",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_orders",
+      "source_count": 500,
+      "target_count": 500,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_customer",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_customer",
+      "source_count": 1000,
+      "target_count": 1000,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_product",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_product",
+      "source_count": 200,
+      "target_count": 200,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.agg_daily_sales",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.agg_daily_sales",
+      "source_count": 365,
+      "target_count": 365,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_store",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_store",
+      "source_count": 50,
+      "target_count": 50,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    }
+  ]
+}

@@ -81,25 +81,40 @@ def _bundles_on_disk(settings: Settings) -> set[str]:
     return out
 
 
+def _bundle_meta(settings: Settings, recon_id: str) -> dict[str, Any]:
+    path = os.path.join(settings.bundles_dir, f"rca_{recon_id}", "meta.json")
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return {}
+
+
 def _runs_from_bundles(settings: Settings) -> list[dict[str, Any]]:
     runs = []
-    for recon_id in sorted(_bundles_on_disk(settings)):
+    for recon_id in _bundles_on_disk(settings):
         result = load_result(settings, recon_id)
         if result is None:
             continue
+        meta = _bundle_meta(settings, recon_id)
         with_diffs = sum(
             1 for s in result.table_summaries
             if s.missing_in_source or s.missing_in_target or s.absolute_mismatch or not s.schema_ok
         )
         runs.append({
             "recon_id": recon_id,
-            "started": None,
+            "title": meta.get("title"),
+            "source": meta.get("source"),
+            "started": meta.get("started"),
             "ended": None,
             "table_pairs": len(result.table_summaries),
             "tables_with_diffs": with_diffs,
             "clean": with_diffs == 0 and len(result.table_summaries) > 0,
             "has_bundle": True,
         })
+    runs.sort(key=lambda r: (r["started"] or ""), reverse=True)
     return runs
 
 

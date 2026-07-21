@@ -62,6 +62,7 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
           <table>
             <thead>
               <tr>
+                <th>Run</th>
                 <th>recon_id</th>
                 <th>Started</th>
                 <th className="num">Table pairs</th>
@@ -77,8 +78,12 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
                   className="clickable"
                   onClick={() => nav(`/analyze/${encodeURIComponent(r.recon_id)}`)}
                 >
-                  <td className="mono">{r.recon_id}</td>
-                  <td className="muted">{r.started || "—"}</td>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{r.title || "Reconcile run"}</div>
+                    {r.source && <div className="muted" style={{ fontSize: 12 }}>{r.source}</div>}
+                  </td>
+                  <td className="mono muted" style={{ fontSize: 12 }}>{r.recon_id}</td>
+                  <td className="muted">{r.started ? new Date(r.started).toLocaleString() : "—"}</td>
                   <td className="num">{r.table_pairs}</td>
                   <td className="num">{r.tables_with_diffs < 0 ? "?" : r.tables_with_diffs}</td>
                   <td>

@@ -10,6 +10,8 @@ export interface AppConfig {
 
 export interface ReconRun {
   recon_id: string;
+  title?: string | null;
+  source?: string | null;
   started: string | null;
   ended: string | null;
   table_pairs: number;

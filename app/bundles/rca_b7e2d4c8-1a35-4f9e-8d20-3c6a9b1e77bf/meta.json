@@ -1,0 +1,7 @@
+{
+  "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+  "title": "Edge-case hardening run",
+  "started": "2026-07-20T14:41:20Z",
+  "source": "Snowflake (PROD_EDGE)",
+  "dialect": "snowflake"
+}

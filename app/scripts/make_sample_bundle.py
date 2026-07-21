@@ -1,16 +1,26 @@
-"""Generate a realistic demo RCA bundle so the App renders with zero workspace setup.
+"""Generate realistic demo RCA bundles so the App is testable without a workspace.
 
-Mirrors the bundled pilot (Snowflake -> Databricks retail migration): a mix of
-migration-induced defects, a genuine data difference, a benign representation diff,
-and clean tables. Writes app/bundles/rca_demo/ via the real engine report writer.
+Produces several recon runs — each with a Lakebridge-style UUID ``recon_id`` — driven
+by the ground-truth oracle in ``migration/scenarios.yaml``:
+
+  * Retail pilot cutover   (S-series: precision, timezone, volume, string, genuine, ...)
+  * Edge-case hardening    (E-series: float repr, int overflow, sentinels, env config, ...)
+  * Clean re-run           (post-fix: every table reconciles 100% -> the ✅ path)
+
+Category / verdict / mechanism come from the oracle (single source of truth); this script
+only overlays realistic volumetrics (row counts, mismatch counts) and writes each bundle via
+the real engine report writer, plus a ``meta.json`` (title/started/source) for the runs list.
 
 Run:  python app/scripts/make_sample_bundle.py
 """
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+
+import yaml
 
 _APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _ROOT = os.path.dirname(_APP)
@@ -31,107 +41,299 @@ from rca_engine.report import write_rca_bundle  # noqa: E402
 
 CAT = "fevm_ps_dr_us_east_2_catalog"
 
+CONFIDENCE = {
+    "migration_induced": 0.92,
+    "genuine_data": 0.82,
+    "benign": 0.9,
+    "needs_review": 0.58,
+}
 
-def _f(target, column, recon_type, mism, total, *, category, verdict, conf,
-       rationale, remediation, owner, samples=None, confirmed=False, query=None):
-    ev = [Evidence(label="probe", detail=rationale)]
+# Remediation + owner keyed by (category, verdict); mechanism/rationale come from the oracle.
+PLAYBOOK: dict[tuple[str, str], tuple[str, str]] = {
+    ("type_precision", "migration_induced"): (
+        "Match the source numeric type/scale — keep DECIMAL(p,s); avoid casting to DOUBLE/INT.",
+        "migration engineer"),
+    ("timezone", "migration_induced"): (
+        "Normalize timestamps to UTC on load (convert_timezone) so the constant offset disappears.",
+        "migration engineer"),
+    ("timezone", "needs_review"): (
+        "Offset varies per row — inspect source timezone handling before applying a single fix.",
+        "migration engineer"),
+    ("semi_structured", "benign"): (
+        "No action — JSON keys reordered; payloads are semantically equal.",
+        "—"),
+    ("semi_structured", "needs_review"): (
+        "Values genuinely differ (not a reorder) — confirm the intended value with the data owner.",
+        "data owner"),
+    ("string_format", "migration_induced"): (
+        "Preserve source casing and trim/normalize (whitespace, Unicode NFC) on load.",
+        "migration engineer"),
+    ("transpilation", "migration_induced"): (
+        "Match the source aggregation/rounding semantics (avoid ROUND rounding-mode drift).",
+        "migration engineer"),
+    ("volume_missing", "migration_induced"): (
+        "Remove/adjust the load filter (watermark) that drops late source rows.",
+        "migration engineer"),
+    ("volume_extra", "migration_induced"): (
+        "Make the merge idempotent; dedupe on the natural key to remove fan-out duplicates.",
+        "migration engineer"),
+    ("upstream_drift", "genuine_data"): (
+        "Route to the data owner — a real source/upstream difference, not a migration bug.",
+        "data owner"),
+    ("upstream_drift", "needs_review"): (
+        "Human decision required: confirm whether the target-only values are intended.",
+        "data owner"),
+    ("null_boolean", "migration_induced"): (
+        "Align null/boolean encoding with source (Y/N, 1/0, NULL vs ''/sentinel).",
+        "migration engineer"),
+    ("env_config", "migration_induced"): (
+        "Align session config (e.g., week-start day) between the source and Spark.",
+        "migration engineer"),
+}
+
+
+def _playbook(category: str, verdict: str, recon_type: str) -> tuple[str, str]:
+    if recon_type == "schema":
+        return ("Reconcile the schema change: column rename + type widening + nullability.",
+                "migration engineer")
+    return PLAYBOOK.get((category, verdict), ("Investigate further.", "migration engineer"))
+
+
+def _load_oracle() -> dict[str, dict]:
+    path = os.path.join(_ROOT, "migration", "scenarios.yaml")
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    return {s["id"]: s for s in data["scenarios"]}
+
+
+ORACLE = _load_oracle()
+
+
+def _finding(recon_id, src_schema, tgt_schema, table, scen_id, *,
+             mismatch, total, missing_t=0, missing_s=0, confirmed=False, query=None):
+    scen = ORACLE[scen_id]
+    category = scen["category"]
+    verdict = scen["verdict"]
+    recon_type = scen["recon_type"]
+    remediation, owner = _playbook(category, verdict, recon_type)
+
+    ev = [Evidence(label="probe", detail=scen["mechanism"])]
     if query:
         ev.append(Evidence(label="confirm", detail="Executed confirmation query.",
                            query=query, data={"confirmed": confirmed}))
+
+    samples = []
+    ex = scen.get("example")
+    if ex and recon_type == "column_mismatch":
+        key_col = f"{table.split('_')[-1]}_id"
+        samples = [MismatchSample(keys={key_col: 1}, column=scen.get("column"),
+                                  source_value=ex.get("source"), target_value=ex.get("target"))]
+
     f = Finding(
-        recon_id="demo", source_table=f"{CAT}.mig_source_sim.{target}",
-        target_table=f"{CAT}.mig_target.{target}", recon_type=recon_type,
-        column=column, mismatch_count=mism, total_count=total,
-        samples=[MismatchSample(keys=s[0], column=column, source_value=s[1], target_value=s[2])
-                 for s in (samples or [])],
+        recon_id=recon_id,
+        source_table=f"{CAT}.{src_schema}.{table}",
+        target_table=f"{CAT}.{tgt_schema}.{table}",
+        recon_type=ReconType(recon_type),
+        column=scen.get("column"),
+        mismatch_count=mismatch, total_count=total, samples=samples,
     )
-    f.hypotheses = [Hypothesis(category=category, verdict=verdict, confidence=conf,
-                               rationale=rationale, remediation=remediation, recommended_owner=owner,
-                               evidence=ev)]
-    return f
+    f.hypotheses = [Hypothesis(
+        category=RootCauseCategory(category), verdict=Verdict(verdict),
+        confidence=CONFIDENCE[verdict], rationale=scen["mechanism"],
+        remediation=remediation, recommended_owner=owner, evidence=ev,
+    )]
+    return f, missing_t, missing_s
 
 
-def build() -> RcaResult:
-    findings = [
-        _f("fact_order_items", "amount", ReconType.COLUMN_MISMATCH, 1180, 1500,
-           category=RootCauseCategory.TYPE_PRECISION, verdict=Verdict.MIGRATION_INDUCED, conf=0.96,
-           rationale="Target AMOUNT is DECIMAL(18,2) vs source DECIMAL(18,4); scale-4 digits are lost.",
-           remediation="Migrate AMOUNT as DECIMAL(18,4) to preserve source scale.",
-           owner="migration engineer",
-           samples=[({"order_item_id": 11}, "12.3457", "12.35"), ({"order_item_id": 21}, "8.6789", "8.68")],
-           confirmed=True, query="SELECT s.amount, t.amount FROM src s JOIN tgt t USING(order_item_id) WHERE s.amount<>t.amount"),
-        _f("fact_orders", "order_ts", ReconType.COLUMN_MISMATCH, 480, 480,
-           category=RootCauseCategory.TIMEZONE, verdict=Verdict.MIGRATION_INDUCED, conf=0.93,
-           rationale="Constant +5:30 offset on every row; TIMESTAMP_LTZ not normalized to UTC on load.",
-           remediation="Normalize ORDER_TS to UTC (convert_timezone) during the load.",
-           owner="migration engineer",
-           samples=[({"order_id": 1}, "2026-07-01 10:00:00", "2026-07-01 15:30:00")],
-           confirmed=True, query="SELECT DISTINCT unix_timestamp(t.order_ts)-unix_timestamp(s.order_ts) FROM ..."),
-        _f("fact_orders", None, ReconType.MISSING_IN_TARGET, 20, 500,
-           category=RootCauseCategory.VOLUME_MISSING, verdict=Verdict.MIGRATION_INDUCED, conf=0.9,
-           rationale="20 source rows (order_id>480) never landed; a load watermark drops late rows.",
-           remediation="Remove/adjust the WHERE order_id<=480 watermark in the load.",
-           owner="migration engineer", confirmed=True,
-           query="SELECT count(*) FROM src WHERE order_id>480"),
-        _f("agg_daily_sales", "revenue", ReconType.COLUMN_MISMATCH, 42, 150,
-           category=RootCauseCategory.TRANSPILATION, verdict=Verdict.MIGRATION_INDUCED, conf=0.88,
-           rationale="REVENUE rounded to whole units vs source exact SUM; ROUND rounding-mode diff.",
-           remediation="Match the source aggregation (no ROUND, or half-up to scale 2).",
-           owner="migration engineer",
-           samples=[({"store_id": 1, "sales_date": "2026-07-01"}, "1234.56", "1235")]),
-        _f("dim_product", "sku", ReconType.COLUMN_MISMATCH, 30, 30,
-           category=RootCauseCategory.STRING_FORMAT, verdict=Verdict.MIGRATION_INDUCED, conf=0.85,
-           rationale="SKU lower-cased with trailing whitespace during the transform.",
-           remediation="Preserve source casing; trim trailing spaces.",
-           owner="migration engineer",
-           samples=[({"product_id": 1}, "SKU-0001", "sku-0001  ")]),
-        _f("dim_customer", "loyalty_tier", ReconType.COLUMN_MISMATCH, 100, 100,
-           category=RootCauseCategory.UPSTREAM_DRIFT, verdict=Verdict.GENUINE_DATA, conf=0.82,
-           rationale="Source LOYALTY_TIER is NULL for all rows while target is populated — a genuine "
-                     "data/provenance difference, not a migration bug.",
-           remediation="Route to the data owner: confirm whether target enrichment is intended.",
-           owner="data owner", confirmed=True,
-           query="SELECT count(*) FROM src WHERE loyalty_tier IS NULL"),
-        _f("dim_customer", "attributes", ReconType.COLUMN_MISMATCH, 100, 100,
-           category=RootCauseCategory.SEMI_STRUCTURED, verdict=Verdict.BENIGN, conf=0.9,
-           rationale="VARIANT re-serialized with keys reordered; payloads are semantically equal.",
-           remediation="No action (representation-only).", owner="—",
-           samples=[({"customer_id": 1}, '{"segment":"A","channel":"web"}', '{"channel":"web","segment":"A"}')]),
-        _f("fact_payments", None, ReconType.MISSING_IN_SOURCE, 10, 60,
-           category=RootCauseCategory.VOLUME_EXTRA, verdict=Verdict.NEEDS_REVIEW, conf=0.6,
-           rationale="10 extra target rows; likely a non-idempotent re-load fan-out. Confirm dedup.",
-           remediation="Make the merge idempotent; dedupe on the natural key.",
-           owner="migration engineer"),
-    ]
+def _table(recon_id, src_schema, tgt_schema, table, *, src, tgt,
+           col_scens: dict[str, int] | None = None, row_scens: list[dict] | None = None,
+           abs_mismatch=0, schema_ok=True, join_keys=None, date_col=None):
+    """Build the findings + TableSummary for one reconciled table pair."""
+    findings = []
+    missing_t = missing_s = 0
+    for scen_id, mism in (col_scens or {}).items():
+        f, mt, ms = _finding(recon_id, src_schema, tgt_schema, table, scen_id,
+                             mismatch=mism, total=src)
+        findings.append(f)
+    for row in (row_scens or []):
+        f, mt, ms = _finding(recon_id, src_schema, tgt_schema, table, row["scen"],
+                             mismatch=row["count"], total=src,
+                             missing_t=row.get("missing_t", 0), missing_s=row.get("missing_s", 0),
+                             confirmed=row.get("confirmed", False), query=row.get("query"))
+        findings.append(f)
+        missing_t += row.get("missing_t", 0)
+        missing_s += row.get("missing_s", 0)
 
-    summaries = [
-        TableSummary(f"{CAT}.mig_source_sim.fact_order_items", f"{CAT}.mig_target.fact_order_items",
-                     source_count=1500, target_count=1510, absolute_mismatch=1180,
-                     mismatch_columns=["amount"], join_keys=["order_item_id"]),
-        TableSummary(f"{CAT}.mig_source_sim.fact_orders", f"{CAT}.mig_target.fact_orders",
-                     source_count=500, target_count=480, missing_in_target=20, absolute_mismatch=480,
-                     mismatch_columns=["order_ts"], join_keys=["order_id"], date_column="order_ts"),
-        TableSummary(f"{CAT}.mig_source_sim.agg_daily_sales", f"{CAT}.mig_target.agg_daily_sales",
-                     source_count=150, target_count=150, absolute_mismatch=42,
-                     mismatch_columns=["revenue"], join_keys=["store_id", "sales_date"], date_column="sales_date"),
-        TableSummary(f"{CAT}.mig_source_sim.dim_product", f"{CAT}.mig_target.dim_product",
-                     source_count=30, target_count=30, absolute_mismatch=30,
-                     mismatch_columns=["sku"], join_keys=["product_id"]),
-        TableSummary(f"{CAT}.mig_source_sim.dim_customer", f"{CAT}.mig_target.dim_customer",
-                     source_count=100, target_count=100, absolute_mismatch=100,
-                     mismatch_columns=["loyalty_tier", "attributes"], join_keys=["customer_id"]),
-        TableSummary(f"{CAT}.mig_source_sim.fact_payments", f"{CAT}.mig_target.fact_payments",
-                     source_count=50, target_count=60, missing_in_source=10, join_keys=["payment_id"]),
-        TableSummary(f"{CAT}.mig_source_sim.dim_store", f"{CAT}.mig_target.dim_store",
-                     source_count=5, target_count=5, join_keys=["store_id"]),
-    ]
-    return RcaResult(recon_id="demo", dialect="snowflake", findings=findings, table_summaries=summaries)
+    mismatch_cols = [ORACLE[s].get("column") for s in (col_scens or {}) if ORACLE[s].get("column")]
+    summary = TableSummary(
+        source_table=f"{CAT}.{src_schema}.{table}",
+        target_table=f"{CAT}.{tgt_schema}.{table}",
+        source_count=src, target_count=tgt,
+        missing_in_target=missing_t, missing_in_source=missing_s,
+        absolute_mismatch=abs_mismatch, mismatch_columns=mismatch_cols,
+        schema_ok=schema_ok, join_keys=join_keys or [], date_column=date_col,
+    )
+    return findings, summary
+
+
+# --------------------------------------------------------------------------- #
+# Run 1 — Retail pilot cutover (S-series + clean dim_store)
+# --------------------------------------------------------------------------- #
+def build_pilot(recon_id: str) -> RcaResult:
+    src, tgt = "mig_source_sim", "mig_target"
+    findings: list[Finding] = []
+    summaries: list[TableSummary] = []
+
+    fs, s = _table(recon_id, src, tgt, "fact_order_items", src=2000, tgt=2015,
+                   col_scens={"S1": 1200},
+                   row_scens=[{"scen": "S7", "count": 15, "missing_s": 15,
+                               "confirmed": True,
+                               "query": "SELECT count(*) FROM tgt GROUP BY order_item_id HAVING count(*)>1"}],
+                   abs_mismatch=1200, join_keys=["order_item_id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "fact_orders", src=500, tgt=480,
+                   col_scens={"S2": 480},
+                   row_scens=[{"scen": "S6", "count": 20, "missing_t": 20, "confirmed": True,
+                               "query": "SELECT count(*) FROM src WHERE order_id > 480"}],
+                   abs_mismatch=480, join_keys=["order_id"], date_col="order_ts")
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "dim_customer", src=1000, tgt=1000,
+                   col_scens={"S3": 1000, "S8": 40, "S9a": 1000, "S9b": 30, "S10": 1000},
+                   abs_mismatch=1000, join_keys=["customer_id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "dim_product", src=200, tgt=200,
+                   col_scens={"S4": 200}, abs_mismatch=200, join_keys=["product_id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "agg_daily_sales", src=365, tgt=365,
+                   col_scens={"S5": 120}, abs_mismatch=120,
+                   join_keys=["store_id", "sales_date"], date_col="sales_date")
+    findings += fs
+    summaries.append(s)
+
+    # C1 — clean 1:1 copy.
+    _, s = _table(recon_id, src, tgt, "dim_store", src=50, tgt=50, join_keys=["store_id"])
+    summaries.append(s)
+
+    return RcaResult(recon_id=recon_id, dialect="snowflake", findings=findings, table_summaries=summaries)
+
+
+# --------------------------------------------------------------------------- #
+# Run 2 — Edge-case hardening (E-series)
+# --------------------------------------------------------------------------- #
+def build_edge(recon_id: str) -> RcaResult:
+    src, tgt = "mig_edge_source", "mig_edge_target"
+    findings: list[Finding] = []
+    summaries: list[TableSummary] = []
+
+    fs, s = _table(recon_id, src, tgt, "edge_numeric", src=5000, tgt=5000,
+                   col_scens={"E1": 5000, "E2": 3}, abs_mismatch=5000, join_keys=["id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "edge_events", src=10000, tgt=10000,
+                   col_scens={"E3": 2500}, abs_mismatch=2500, join_keys=["event_id"],
+                   date_col="event_ts")
+    findings += fs
+    summaries.append(s)
+
+    # E4 — schema-level change.
+    fs, s = _table(recon_id, src, tgt, "edge_geo", src=800, tgt=800,
+                   row_scens=[{"scen": "E4", "count": 1}], abs_mismatch=0, schema_ok=False,
+                   join_keys=["geo_id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "agg_weekly_sales", src=104, tgt=104,
+                   col_scens={"E5": 104}, abs_mismatch=104,
+                   join_keys=["store_id", "week_start"], date_col="week_start")
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "dim_supplier", src=300, tgt=300,
+                   col_scens={"E6": 5}, abs_mismatch=5, join_keys=["supplier_id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "dim_config", src=20, tgt=20,
+                   col_scens={"E7": 3}, abs_mismatch=3, join_keys=["config_id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "fact_inventory", src=4000, tgt=4000,
+                   col_scens={"E8": 60}, abs_mismatch=60, join_keys=["sku_id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "dim_flag", src=100, tgt=100,
+                   col_scens={"E9": 100}, abs_mismatch=100, join_keys=["id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "fact_payments", src=5990, tgt=6000,
+                   row_scens=[{"scen": "E10", "count": 10, "missing_s": 10, "confirmed": True,
+                               "query": "SELECT count(*) FROM tgt GROUP BY payment_id HAVING count(*)>1"}],
+                   abs_mismatch=0, join_keys=["payment_id"])
+    findings += fs
+    summaries.append(s)
+
+    fs, s = _table(recon_id, src, tgt, "edge_string", src=1500, tgt=1500,
+                   col_scens={"E11": 1500, "E12": 200}, abs_mismatch=1500, join_keys=["id"])
+    findings += fs
+    summaries.append(s)
+
+    return RcaResult(recon_id=recon_id, dialect="snowflake", findings=findings, table_summaries=summaries)
+
+
+# --------------------------------------------------------------------------- #
+# Run 3 — Clean re-run (post-fix): every table reconciles 100%
+# --------------------------------------------------------------------------- #
+def build_clean(recon_id: str) -> RcaResult:
+    src, tgt = "mig_source_sim", "mig_target"
+    tables = {"fact_order_items": 2000, "fact_orders": 500, "dim_customer": 1000,
+              "dim_product": 200, "agg_daily_sales": 365, "dim_store": 50}
+    summaries = [TableSummary(
+        source_table=f"{CAT}.{src}.{t}", target_table=f"{CAT}.{tgt}.{t}",
+        source_count=n, target_count=n, join_keys=["id"]) for t, n in tables.items()]
+    return RcaResult(recon_id=recon_id, dialect="snowflake", findings=[], table_summaries=summaries)
+
+
+# Stable, Lakebridge-style recon_ids (UUIDv4 shape) so committed bundles are reproducible.
+RUNS = [
+    {"recon_id": "a3f9c1e2-7b64-4d0a-9c31-6f2b8e5d41aa",
+     "title": "Retail pilot cutover — Snowflake → Databricks",
+     "started": "2026-07-20T09:14:03Z", "source": "Snowflake (PROD_RETAIL)",
+     "builder": build_pilot},
+    {"recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+     "title": "Edge-case hardening run",
+     "started": "2026-07-20T14:41:20Z", "source": "Snowflake (PROD_EDGE)",
+     "builder": build_edge},
+    {"recon_id": "c1d8f0a6-9e47-42b3-a5c9-8b4d2e6f0139",
+     "title": "Clean re-run (post-fix validation)",
+     "started": "2026-07-21T08:02:55Z", "source": "Snowflake (PROD_RETAIL)",
+     "builder": build_clean},
+]
 
 
 def main():
     out = os.path.join(_APP, "bundles")
-    folder = write_rca_bundle(build(), out, "demo", combined=False)
-    print(f"Wrote demo bundle -> {folder}")
+    for run in RUNS:
+        result = run["builder"](run["recon_id"])
+        folder = write_rca_bundle(result, out, run["recon_id"], combined=False)
+        meta = {"recon_id": run["recon_id"], "title": run["title"],
+                "started": run["started"], "source": run["source"], "dialect": result.dialect}
+        with open(os.path.join(folder, "meta.json"), "w") as f:
+            json.dump(meta, f, indent=2)
+        print(f"[{run['title']}]  recon_id={run['recon_id']}  "
+              f"tables={len(result.table_summaries)} findings={len(result.findings)}")
+        print(f"   -> {folder}")
 
 
 if __name__ == "__main__":

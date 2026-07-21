@@ -1,0 +1,605 @@
+{
+  "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+  "dialect": "snowflake",
+  "findings": [
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_numeric",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_numeric",
+      "recon_type": "column_mismatch",
+      "column": "v_double",
+      "mismatch_count": 5000,
+      "total_count": 5000,
+      "samples": [
+        {
+          "keys": {
+            "numeric_id": 1
+          },
+          "column": "v_double",
+          "source_value": "0.100000",
+          "target_value": "0.10000000000000001"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "type_precision",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "source DECIMAL(18,6) migrated to DOUBLE -> binary float representation error",
+          "remediation": "Match the source numeric type/scale \u2014 keep DECIMAL(p,s); avoid casting to DOUBLE/INT.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "source DECIMAL(18,6) migrated to DOUBLE -> binary float representation error",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_numeric",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_numeric",
+      "recon_type": "column_mismatch",
+      "column": "big_id",
+      "mismatch_count": 3,
+      "total_count": 5000,
+      "samples": [
+        {
+          "keys": {
+            "numeric_id": 1
+          },
+          "column": "big_id",
+          "source_value": "3000000000",
+          "target_value": "-1294967296"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "type_precision",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "source NUMBER(38,0) cast to INT -> integer overflow / wrap",
+          "remediation": "Match the source numeric type/scale \u2014 keep DECIMAL(p,s); avoid casting to DOUBLE/INT.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "source NUMBER(38,0) cast to INT -> integer overflow / wrap",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_events",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_events",
+      "recon_type": "column_mismatch",
+      "column": "event_ts",
+      "mismatch_count": 2500,
+      "total_count": 10000,
+      "samples": [],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "timezone",
+          "verdict": "needs_review",
+          "confidence": 0.58,
+          "rationale": "offset varies by row (not constant) -> cannot be a single tz normalization; needs review",
+          "remediation": "Offset varies per row \u2014 inspect source timezone handling before applying a single fix.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "offset varies by row (not constant) -> cannot be a single tz normalization; needs review",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_geo",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_geo",
+      "recon_type": "schema",
+      "column": null,
+      "mismatch_count": 1,
+      "total_count": 800,
+      "samples": [],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "type_precision",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "column renamed + type widened (DECIMAL(9,6)->DOUBLE) + nullability change",
+          "remediation": "Reconcile the schema change: column rename + type widening + nullability.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "column renamed + type widened (DECIMAL(9,6)->DOUBLE) + nullability change",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.agg_weekly_sales",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.agg_weekly_sales",
+      "recon_type": "column_mismatch",
+      "column": "week_start",
+      "mismatch_count": 104,
+      "total_count": 104,
+      "samples": [
+        {
+          "keys": {
+            "sales_id": 1
+          },
+          "column": "week_start",
+          "source_value": "2026-01-05",
+          "target_value": "2026-01-04"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "env_config",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "week-start config differs (Monday vs Sunday) between source and Spark",
+          "remediation": "Align session config (e.g., week-start day) between the source and Spark.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "week-start config differs (Monday vs Sunday) between source and Spark",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.dim_supplier",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.dim_supplier",
+      "recon_type": "column_mismatch",
+      "column": "contact_email",
+      "mismatch_count": 5,
+      "total_count": 300,
+      "samples": [
+        {
+          "keys": {
+            "supplier_id": 1
+          },
+          "column": "contact_email",
+          "source_value": "s10@vendor.com",
+          "target_value": null
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "upstream_drift",
+          "verdict": "genuine_data",
+          "confidence": 0.82,
+          "rationale": "target NULL where source populated (dropped/late upstream) -> route to data owner",
+          "remediation": "Route to the data owner \u2014 a real source/upstream difference, not a migration bug.",
+          "recommended_owner": "data owner",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "target NULL where source populated (dropped/late upstream) -> route to data owner",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.dim_config",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.dim_config",
+      "recon_type": "column_mismatch",
+      "column": "settings_json",
+      "mismatch_count": 3,
+      "total_count": 20,
+      "samples": [
+        {
+          "keys": {
+            "config_id": 1
+          },
+          "column": "settings_json",
+          "source_value": "{\"retries\":3}",
+          "target_value": "{\"retries\":5}"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "semi_structured",
+          "verdict": "needs_review",
+          "confidence": 0.58,
+          "rationale": "JSON value genuinely different (not a reorder) -> not benign",
+          "remediation": "Values genuinely differ (not a reorder) \u2014 confirm the intended value with the data owner.",
+          "recommended_owner": "data owner",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "JSON value genuinely different (not a reorder) -> not benign",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.fact_inventory",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.fact_inventory",
+      "recon_type": "column_mismatch",
+      "column": "reorder_level",
+      "mismatch_count": 60,
+      "total_count": 4000,
+      "samples": [
+        {
+          "keys": {
+            "inventory_id": 1
+          },
+          "column": "reorder_level",
+          "source_value": null,
+          "target_value": "-1"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "null_boolean",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "NULL replaced by sentinel -1 in target",
+          "remediation": "Align null/boolean encoding with source (Y/N, 1/0, NULL vs ''/sentinel).",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "NULL replaced by sentinel -1 in target",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.dim_flag",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.dim_flag",
+      "recon_type": "column_mismatch",
+      "column": "active_flag",
+      "mismatch_count": 100,
+      "total_count": 100,
+      "samples": [
+        {
+          "keys": {
+            "flag_id": 1
+          },
+          "column": "active_flag",
+          "source_value": "1",
+          "target_value": "true"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "null_boolean",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "1/0 integer flag -> true/false boolean",
+          "remediation": "Align null/boolean encoding with source (Y/N, 1/0, NULL vs ''/sentinel).",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "1/0 integer flag -> true/false boolean",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.fact_payments",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.fact_payments",
+      "recon_type": "missing_in_source",
+      "column": null,
+      "mismatch_count": 10,
+      "total_count": 5990,
+      "samples": [],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "volume_extra",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "non-idempotent merge re-ran -> duplicate payment rows in target",
+          "remediation": "Make the merge idempotent; dedupe on the natural key to remove fan-out duplicates.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "non-idempotent merge re-ran -> duplicate payment rows in target",
+              "query": null,
+              "data": null
+            },
+            {
+              "label": "confirm",
+              "detail": "Executed confirmation query.",
+              "query": "SELECT count(*) FROM tgt GROUP BY payment_id HAVING count(*)>1",
+              "data": {
+                "confirmed": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_string",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_string",
+      "recon_type": "column_mismatch",
+      "column": "name_ws",
+      "mismatch_count": 1500,
+      "total_count": 1500,
+      "samples": [
+        {
+          "keys": {
+            "string_id": 1
+          },
+          "column": "name_ws",
+          "source_value": "Acme",
+          "target_value": "Acme   "
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "string_format",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "trailing whitespace only",
+          "remediation": "Preserve source casing and trim/normalize (whitespace, Unicode NFC) on load.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "trailing whitespace only",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "b7e2d4c8-1a35-4f9e-8d20-3c6a9b1e77bf",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_string",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_string",
+      "recon_type": "column_mismatch",
+      "column": "name_unicode",
+      "mismatch_count": 200,
+      "total_count": 1500,
+      "samples": [],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "string_format",
+          "verdict": "migration_induced",
+          "confidence": 0.92,
+          "rationale": "Unicode NFC vs NFD normalization (visually identical; normalize on load)",
+          "remediation": "Preserve source casing and trim/normalize (whitespace, Unicode NFC) on load.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "Unicode NFC vs NFD normalization (visually identical; normalize on load)",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "table_summaries": [
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_numeric",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_numeric",
+      "source_count": 5000,
+      "target_count": 5000,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 5000,
+      "mismatch_columns": [
+        "v_double",
+        "big_id"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_events",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_events",
+      "source_count": 10000,
+      "target_count": 10000,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 2500,
+      "mismatch_columns": [
+        "event_ts"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "event_id"
+      ],
+      "date_column": "event_ts"
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_geo",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_geo",
+      "source_count": 800,
+      "target_count": 800,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": false,
+      "join_keys": [
+        "geo_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.agg_weekly_sales",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.agg_weekly_sales",
+      "source_count": 104,
+      "target_count": 104,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 104,
+      "mismatch_columns": [
+        "week_start"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "store_id",
+        "week_start"
+      ],
+      "date_column": "week_start"
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.dim_supplier",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.dim_supplier",
+      "source_count": 300,
+      "target_count": 300,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 5,
+      "mismatch_columns": [
+        "contact_email"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "supplier_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.dim_config",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.dim_config",
+      "source_count": 20,
+      "target_count": 20,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 3,
+      "mismatch_columns": [
+        "settings_json"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "config_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.fact_inventory",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.fact_inventory",
+      "source_count": 4000,
+      "target_count": 4000,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 60,
+      "mismatch_columns": [
+        "reorder_level"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "sku_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.dim_flag",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.dim_flag",
+      "source_count": 100,
+      "target_count": 100,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 100,
+      "mismatch_columns": [
+        "active_flag"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.fact_payments",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.fact_payments",
+      "source_count": 5990,
+      "target_count": 6000,
+      "missing_in_source": 10,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "payment_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_source.edge_string",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_edge_target.edge_string",
+      "source_count": 1500,
+      "target_count": 1500,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 1500,
+      "mismatch_columns": [
+        "name_ws",
+        "name_unicode"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "id"
+      ],
+      "date_column": null
+    }
+  ]
+}

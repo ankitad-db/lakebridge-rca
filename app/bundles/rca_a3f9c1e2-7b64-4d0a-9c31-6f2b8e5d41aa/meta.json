@@ -1,0 +1,7 @@
+{
+  "recon_id": "a3f9c1e2-7b64-4d0a-9c31-6f2b8e5d41aa",
+  "title": "Retail pilot cutover \u2014 Snowflake \u2192 Databricks",
+  "started": "2026-07-20T09:14:03Z",
+  "source": "Snowflake (PROD_RETAIL)",
+  "dialect": "snowflake"
+}

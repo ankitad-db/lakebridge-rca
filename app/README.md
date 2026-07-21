@@ -28,7 +28,7 @@ app/
     rca_service.py      # discovery, bundle load, SDK statement runner, UI view builder
     routes/api.py       # /api/config, /api/runs, /api/runs/{id}, /api/runs/{id}/summary
   frontend/             # React + Vite + TS (Databricks dark theme)
-  bundles/rca_demo/     # committed demo bundle → the app renders with zero setup
+  bundles/rca_<uuid>/   # committed demo bundles (3 runs) → the app renders with zero setup
   scripts/make_sample_bundle.py
 ```
 
@@ -48,7 +48,10 @@ Frontend dev with hot reload (proxies /api → :8000):
 cd app/frontend && npm run dev    # http://localhost:5173
 ```
 
-Regenerate the demo bundle: `python scripts/make_sample_bundle.py`.
+Regenerate the demo bundles: `python scripts/make_sample_bundle.py`. This writes three
+recon runs (realistic UUID `recon_id`s) driven by `migration/scenarios.yaml` — a retail
+pilot cutover, an edge-case hardening run, and a clean post-fix re-run — so you can exercise
+every scenario and the ✅ clean path.
 
 ## Configuration (env / `app.yaml`)
 | Var | Purpose |
