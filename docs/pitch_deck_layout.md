@@ -49,7 +49,7 @@
 ## Slide 5 — Value / Proof
 - Headline metrics (mark estimates until pilot): **days → < 30 min**, **deterministic verdicts**,
   **12 categories / 22 conformance scenarios**, **100% findings cite an executed query**.
-- Trust: **55 deterministic tests + integration harness** vs a ground-truth oracle.
+- Trust: **70 deterministic tests + integration harness** vs a ground-truth oracle.
 - Visual: before/after bar (latency) + a coverage matrix.
 
 ## Slide 6 — As-Is → To-Be (Localized → Global)
@@ -62,6 +62,7 @@
 - **Ask:** endorse the two one-pagers + resource the global-asset roadmap (P1 dialects, P2 pilot).
 - **Next steps:** (1) first customer pilot to lock measured baselines; (2) Oracle/Teradata dialect
   packs; (3) publish skill v1 to the shared catalog.
+- Roadmap beyond v1 in **Appendix A4** (multi-dialect, regression tracking, self-serve App).
 - Contact / owners.
 
 ---
@@ -70,3 +71,22 @@
 - A1: Verdict taxonomy + edge cases (from One-Pager 1 §5).
 - A2: Example RCA notebook screenshot (TL;DR + a confirmed finding with its query).
 - A3: config.yml contract (from One-Pager 2 §3).
+
+### A4 — Future development roadmap (post-v1)
+Bigger bets that build on the decoupled engine (each is independent of the others):
+
+| Phase | Item | What it adds | Effort | Depends on |
+|---|---|---|---|---|
+| P1 | **Multi-dialect knowledge packs** | Oracle, Teradata, MSSQL, Redshift KBs alongside `snowflake.yaml` → truly source-agnostic RCA | M | KB schema (exists) |
+| P1 | **Preflight checks** | Validate recon tables/warehouse reachable + friendly guidance before a run | S | runners |
+| P2 | **Run-over-run regression tracking** | Persist RCA history; "did last cutover's fixes clear the findings?" trend + delta report | M–L | a small history store |
+| P2 | **Databricks App (self-serve UI)** | Non-notebook front-end: browse recon runs → severity-ranked findings → drill-down → export/route (see below) | M | engine (decoupled ✔) |
+| P3 | **Auto-remediation** | Propose/patch the migration SQL for 🔧 findings (type cast, tz-normalize, dedup) as a reviewable diff | L | code-aware layer (exists) |
+| P3 | **Routing integrations** | Push 📊 genuine diffs to the data owner via Slack/Jira; attach `SUMMARY.md` | S–M | SUMMARY.md (exists) |
+
+**Why a Databricks App (P2):** the engine is already a pure-Python library behind a
+`QueryRunner` protocol (Spark *and* SQL-warehouse backends), so a FastAPI + React App is a
+thin wrapper — no engine rewrite. It broadens the audience beyond notebook users (Delivery
+Leads, Data Owners, Execs get a click-through dashboard), gives a persistent multi-run home
+with the severity scorecard, and complements (doesn't replace) the Genie Code skill: the
+skill is the agentic/interactive path, the App is the self-serve/at-a-glance path.
