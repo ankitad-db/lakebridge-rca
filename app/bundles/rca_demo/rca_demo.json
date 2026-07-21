@@ -1,0 +1,443 @@
+{
+  "recon_id": "demo",
+  "dialect": "snowflake",
+  "findings": [
+    {
+      "recon_id": "demo",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_order_items",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_order_items",
+      "recon_type": "column_mismatch",
+      "column": "amount",
+      "mismatch_count": 1180,
+      "total_count": 1500,
+      "samples": [
+        {
+          "keys": {
+            "order_item_id": 11
+          },
+          "column": "amount",
+          "source_value": "12.3457",
+          "target_value": "12.35"
+        },
+        {
+          "keys": {
+            "order_item_id": 21
+          },
+          "column": "amount",
+          "source_value": "8.6789",
+          "target_value": "8.68"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "type_precision",
+          "verdict": "migration_induced",
+          "confidence": 0.96,
+          "rationale": "Target AMOUNT is DECIMAL(18,2) vs source DECIMAL(18,4); scale-4 digits are lost.",
+          "remediation": "Migrate AMOUNT as DECIMAL(18,4) to preserve source scale.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "Target AMOUNT is DECIMAL(18,2) vs source DECIMAL(18,4); scale-4 digits are lost.",
+              "query": null,
+              "data": null
+            },
+            {
+              "label": "confirm",
+              "detail": "Executed confirmation query.",
+              "query": "SELECT s.amount, t.amount FROM src s JOIN tgt t USING(order_item_id) WHERE s.amount<>t.amount",
+              "data": {
+                "confirmed": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "demo",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_orders",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_orders",
+      "recon_type": "column_mismatch",
+      "column": "order_ts",
+      "mismatch_count": 480,
+      "total_count": 480,
+      "samples": [
+        {
+          "keys": {
+            "order_id": 1
+          },
+          "column": "order_ts",
+          "source_value": "2026-07-01 10:00:00",
+          "target_value": "2026-07-01 15:30:00"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "timezone",
+          "verdict": "migration_induced",
+          "confidence": 0.93,
+          "rationale": "Constant +5:30 offset on every row; TIMESTAMP_LTZ not normalized to UTC on load.",
+          "remediation": "Normalize ORDER_TS to UTC (convert_timezone) during the load.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "Constant +5:30 offset on every row; TIMESTAMP_LTZ not normalized to UTC on load.",
+              "query": null,
+              "data": null
+            },
+            {
+              "label": "confirm",
+              "detail": "Executed confirmation query.",
+              "query": "SELECT DISTINCT unix_timestamp(t.order_ts)-unix_timestamp(s.order_ts) FROM ...",
+              "data": {
+                "confirmed": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "demo",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_orders",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_orders",
+      "recon_type": "missing_in_target",
+      "column": null,
+      "mismatch_count": 20,
+      "total_count": 500,
+      "samples": [],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "volume_missing",
+          "verdict": "migration_induced",
+          "confidence": 0.9,
+          "rationale": "20 source rows (order_id>480) never landed; a load watermark drops late rows.",
+          "remediation": "Remove/adjust the WHERE order_id<=480 watermark in the load.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "20 source rows (order_id>480) never landed; a load watermark drops late rows.",
+              "query": null,
+              "data": null
+            },
+            {
+              "label": "confirm",
+              "detail": "Executed confirmation query.",
+              "query": "SELECT count(*) FROM src WHERE order_id>480",
+              "data": {
+                "confirmed": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "demo",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.agg_daily_sales",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.agg_daily_sales",
+      "recon_type": "column_mismatch",
+      "column": "revenue",
+      "mismatch_count": 42,
+      "total_count": 150,
+      "samples": [
+        {
+          "keys": {
+            "store_id": 1,
+            "sales_date": "2026-07-01"
+          },
+          "column": "revenue",
+          "source_value": "1234.56",
+          "target_value": "1235"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "transpilation",
+          "verdict": "migration_induced",
+          "confidence": 0.88,
+          "rationale": "REVENUE rounded to whole units vs source exact SUM; ROUND rounding-mode diff.",
+          "remediation": "Match the source aggregation (no ROUND, or half-up to scale 2).",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "REVENUE rounded to whole units vs source exact SUM; ROUND rounding-mode diff.",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "demo",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_product",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_product",
+      "recon_type": "column_mismatch",
+      "column": "sku",
+      "mismatch_count": 30,
+      "total_count": 30,
+      "samples": [
+        {
+          "keys": {
+            "product_id": 1
+          },
+          "column": "sku",
+          "source_value": "SKU-0001",
+          "target_value": "sku-0001  "
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "string_format",
+          "verdict": "migration_induced",
+          "confidence": 0.85,
+          "rationale": "SKU lower-cased with trailing whitespace during the transform.",
+          "remediation": "Preserve source casing; trim trailing spaces.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "SKU lower-cased with trailing whitespace during the transform.",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "demo",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_customer",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_customer",
+      "recon_type": "column_mismatch",
+      "column": "loyalty_tier",
+      "mismatch_count": 100,
+      "total_count": 100,
+      "samples": [],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "upstream_drift",
+          "verdict": "genuine_data",
+          "confidence": 0.82,
+          "rationale": "Source LOYALTY_TIER is NULL for all rows while target is populated \u2014 a genuine data/provenance difference, not a migration bug.",
+          "remediation": "Route to the data owner: confirm whether target enrichment is intended.",
+          "recommended_owner": "data owner",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "Source LOYALTY_TIER is NULL for all rows while target is populated \u2014 a genuine data/provenance difference, not a migration bug.",
+              "query": null,
+              "data": null
+            },
+            {
+              "label": "confirm",
+              "detail": "Executed confirmation query.",
+              "query": "SELECT count(*) FROM src WHERE loyalty_tier IS NULL",
+              "data": {
+                "confirmed": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "demo",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_customer",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_customer",
+      "recon_type": "column_mismatch",
+      "column": "attributes",
+      "mismatch_count": 100,
+      "total_count": 100,
+      "samples": [
+        {
+          "keys": {
+            "customer_id": 1
+          },
+          "column": "attributes",
+          "source_value": "{\"segment\":\"A\",\"channel\":\"web\"}",
+          "target_value": "{\"channel\":\"web\",\"segment\":\"A\"}"
+        }
+      ],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "semi_structured",
+          "verdict": "benign",
+          "confidence": 0.9,
+          "rationale": "VARIANT re-serialized with keys reordered; payloads are semantically equal.",
+          "remediation": "No action (representation-only).",
+          "recommended_owner": "\u2014",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "VARIANT re-serialized with keys reordered; payloads are semantically equal.",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "recon_id": "demo",
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_payments",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_payments",
+      "recon_type": "missing_in_source",
+      "column": null,
+      "mismatch_count": 10,
+      "total_count": 60,
+      "samples": [],
+      "metadata": {},
+      "hypotheses": [
+        {
+          "category": "volume_extra",
+          "verdict": "needs_review",
+          "confidence": 0.6,
+          "rationale": "10 extra target rows; likely a non-idempotent re-load fan-out. Confirm dedup.",
+          "remediation": "Make the merge idempotent; dedupe on the natural key.",
+          "recommended_owner": "migration engineer",
+          "evidence": [
+            {
+              "label": "probe",
+              "detail": "10 extra target rows; likely a non-idempotent re-load fan-out. Confirm dedup.",
+              "query": null,
+              "data": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "table_summaries": [
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_order_items",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_order_items",
+      "source_count": 1500,
+      "target_count": 1510,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 1180,
+      "mismatch_columns": [
+        "amount"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "order_item_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_orders",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_orders",
+      "source_count": 500,
+      "target_count": 480,
+      "missing_in_source": 0,
+      "missing_in_target": 20,
+      "absolute_mismatch": 480,
+      "mismatch_columns": [
+        "order_ts"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "order_id"
+      ],
+      "date_column": "order_ts"
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.agg_daily_sales",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.agg_daily_sales",
+      "source_count": 150,
+      "target_count": 150,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 42,
+      "mismatch_columns": [
+        "revenue"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "store_id",
+        "sales_date"
+      ],
+      "date_column": "sales_date"
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_product",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_product",
+      "source_count": 30,
+      "target_count": 30,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 30,
+      "mismatch_columns": [
+        "sku"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "product_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_customer",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_customer",
+      "source_count": 100,
+      "target_count": 100,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 100,
+      "mismatch_columns": [
+        "loyalty_tier",
+        "attributes"
+      ],
+      "schema_ok": true,
+      "join_keys": [
+        "customer_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.fact_payments",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.fact_payments",
+      "source_count": 50,
+      "target_count": 60,
+      "missing_in_source": 10,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "payment_id"
+      ],
+      "date_column": null
+    },
+    {
+      "source_table": "fevm_ps_dr_us_east_2_catalog.mig_source_sim.dim_store",
+      "target_table": "fevm_ps_dr_us_east_2_catalog.mig_target.dim_store",
+      "source_count": 5,
+      "target_count": 5,
+      "missing_in_source": 0,
+      "missing_in_target": 0,
+      "absolute_mismatch": 0,
+      "mismatch_columns": [],
+      "schema_ok": true,
+      "join_keys": [
+        "store_id"
+      ],
+      "date_column": null
+    }
+  ]
+}

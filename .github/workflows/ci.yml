@@ -42,10 +42,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Diff rca_engine vs skill copy
+      - name: Diff rca_engine vs vendored copies (skill + app)
         run: |
           if ! diff -rq --exclude='__pycache__' rca_engine skill/rca-recon/rca_engine; then
             echo "::error::skill/rca-recon/rca_engine is out of sync with rca_engine/. Run 'make sync'."
+            exit 1
+          fi
+          if ! diff -rq --exclude='__pycache__' rca_engine app/rca_engine; then
+            echo "::error::app/rca_engine is out of sync with rca_engine/. Run 'make sync'."
             exit 1
           fi
           echo "Vendored engine is in sync."

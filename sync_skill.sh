@@ -10,9 +10,10 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 SKILL="$ROOT/skill/rca-recon"
 PROFILE="${1:-ps-dr-east}"
 
-echo "==> Vendoring rca_engine into the skill"
-rm -rf "$SKILL/rca_engine"
+echo "==> Vendoring rca_engine into the skill and app"
+rm -rf "$SKILL/rca_engine" "$ROOT/app/rca_engine"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' "$ROOT/rca_engine/" "$SKILL/rca_engine/"
+rsync -a --exclude '__pycache__' --exclude '*.pyc' "$ROOT/rca_engine/" "$ROOT/app/rca_engine/"
 
 ME="$(databricks current-user me --profile "$PROFILE" -o json | python3 -c 'import sys,json;print(json.load(sys.stdin)["userName"])')"
 DEST="/Users/$ME/.assistant/skills/rca-recon"

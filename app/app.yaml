@@ -1,0 +1,33 @@
+command:
+  - "python"
+  - "-m"
+  - "uvicorn"
+  - "app:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+
+env:
+  # Recon output location (where Lakebridge reconcile wrote main/metrics/details).
+  - name: RCA_RECON_CATALOG
+    value: "fevm_ps_dr_us_east_2_catalog"
+  - name: RCA_RECON_SCHEMA
+    value: "reconcile"
+  - name: RCA_DIALECT
+    value: "snowflake"
+
+  # SQL warehouse used for discovery/reads. Bind a "SQL warehouse" resource to the
+  # app and set its id here (or via the resource-injected env var).
+  - name: RCA_WAREHOUSE_ID
+    value: ""
+
+  # Where pre-computed RCA bundles live (a UC Volume in-workspace). Leave as the
+  # bundled demo dir for a zero-config read-only preview.
+  - name: RCA_BUNDLES_DIR
+    value: "/app/bundles"
+
+  # Set to "true" to let the app run analyze() live for a recon_id without a bundle
+  # (P2). Off by default — the app is a reader unless you opt in.
+  - name: RCA_ALLOW_ONDEMAND
+    value: "false"

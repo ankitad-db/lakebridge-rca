@@ -54,6 +54,8 @@ packages = ["rca_engine"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Generated RCA notebooks (bundles) are artifacts, not source.
+extend-exclude = ["app/bundles", "app/frontend"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
@@ -66,6 +68,9 @@ ignore = ["E501"]
 # Entry scripts bootstrap sys.path before importing the engine (intentional E402).
 "scripts/*.py" = ["E402"]
 "skill/rca-recon/scripts/*.py" = ["E402"]
+"app/scripts/*.py" = ["E402"]
+# The app entry point adjusts sys.path for the vendored engine before importing.
+"app/app.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

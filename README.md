@@ -51,6 +51,7 @@ rca_engine/            # source-agnostic diagnostics package (the engine)
   runners.py           #   QueryRunner: Spark (notebook) + Statement API (local)
   cli.py               #   `rca-run` entrypoint (+ `--list` discovery)
 skill/rca-recon/       # the Genie Code skill (SKILL.md, config.yml, vendored engine)
+app/                   # Databricks App: self-serve UI over the engine (FastAPI + React)
 migration/             # realistic Snowflake->Databricks test bed (see migration/README.md)
   scenarios.yaml       #   machine-readable ground-truth oracle (22 scenarios)
   edge_cases/          #   edge-case source/target tables
@@ -128,7 +129,21 @@ Produces a self-contained `rca_out/rca_<recon_id>/` folder: `00_index.ipynb`
 `SUMMARY.md`, `rca_<recon_id>.json`, and one notebook per reconciled table. Add
 `--combined-notebook` for a single-scroll `rca_<recon_id>_all.ipynb`.
 
-### C. Run the tests (no workspace needed)
+### C. As a Databricks App (self-serve UI)
+
+A Databricks-themed web UI over the same engine — pick a `recon_id`, see a dashboard,
+drill into any table. Renders pre-computed bundles and can trigger live runs. Ships with a
+committed demo bundle so it runs with zero workspace setup:
+
+```bash
+cd app/frontend && npm install && npm run build && cd ..
+pip install -r requirements.txt
+python -m uvicorn app:app --reload --port 8000     # open http://localhost:8000
+```
+
+See [`app/README.md`](app/README.md) for pages, configuration, and deployment.
+
+### D. Run the tests (no workspace needed)
 
 ```bash
 pytest                       # 70 deterministic unit tests
@@ -186,6 +201,7 @@ To exercise the full pipeline on the bundled Snowflake→Databricks test bed:
 - [`docs/one_pager_1_current_project.md`](docs/one_pager_1_current_project.md) — the "As-Is" blueprint.
 - [`docs/one_pager_2_global_asset.md`](docs/one_pager_2_global_asset.md) — the "To-Be" global-asset package.
 - [`docs/pitch_deck_layout.md`](docs/pitch_deck_layout.md) — pitch layout with personas.
+- [`app/README.md`](app/README.md) — Databricks App: pages, config, and deploy.
 - [`skill/rca-recon/SKILL.md`](skill/rca-recon/SKILL.md) — skill contract, examples, edge cases.
 - [`skill/rca-recon/references/taxonomy.md`](skill/rca-recon/references/taxonomy.md) — category ↔ verdict mapping.
 - [`migration/scenarios.md`](migration/scenarios.md) — human-readable scenario catalog.

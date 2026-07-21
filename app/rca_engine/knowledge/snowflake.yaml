@@ -1,0 +1,94 @@
+dialect: snowflake
+
+# Snowflake -> Databricks type mapping guidance. `risk` flags mappings that
+# commonly cause reconciliation mismatches if done incorrectly.
+type_mappings:
+  - source: NUMBER(p,s) / DECIMAL(p,s)
+    databricks: DECIMAL(p,s)
+    risk: high
+    note: Mapping to DOUBLE/FLOAT loses precision and causes rounding drift. Preserve precision/scale.
+  - source: FLOAT / DOUBLE / REAL
+    databricks: DOUBLE
+    risk: medium
+    note: Aggregation ordering can produce tiny differences on doubles.
+  - source: TIMESTAMP_NTZ
+    databricks: TIMESTAMP_NTZ
+    risk: low
+    note: Wall-clock time, no timezone.
+  - source: TIMESTAMP_LTZ
+    databricks: TIMESTAMP
+    risk: high
+    note: LTZ is session-tz relative; Databricks TIMESTAMP is UTC. Normalize explicitly or values shift by an offset.
+  - source: TIMESTAMP_TZ
+    databricks: TIMESTAMP
+    risk: high
+    note: Carries an offset; convert to UTC deterministically.
+  - source: VARIANT / OBJECT / ARRAY
+    databricks: STRING (JSON) or STRUCT/MAP/ARRAY
+    risk: medium
+    note: JSON key ordering and serialization differ; compare parsed values, not raw text.
+  - source: BOOLEAN
+    databricks: BOOLEAN
+    risk: medium
+    note: Source often stores 'Y'/'N' or 1/0 strings; map explicitly.
+  - source: VARCHAR / STRING / CHAR(n)
+    databricks: STRING
+    risk: medium
+    note: CHAR(n) padding and collation/case can differ.
+
+# Functions whose semantics differ between Snowflake and Spark SQL.
+function_diffs:
+  - function: DATE_TRUNC('week', ...)
+    category: transpilation
+    note: Snowflake week starts Monday by default (WEEK_START); Spark week starts Sunday. Aggregations by week can bucket differently.
+  - function: ROUND
+    category: transpilation
+    note: Rounding mode can differ (half-up vs half-even). Verify on .5 boundaries.
+  - function: SPLIT_PART
+    category: transpilation
+    note: Indexing/empty-part behavior differs; validate off-by-one and empty inputs.
+  - function: DATEADD / DATEDIFF
+    category: transpilation
+    note: Argument order and unit handling differ from Spark date_add/datediff.
+  - function: DIV / integer division
+    category: transpilation
+    note: Integer vs float division semantics differ; check truncation.
+  - function: LISTAGG
+    category: transpilation
+    note: Ordering within the aggregate is not guaranteed unless specified.
+  - function: NULLS ordering (ORDER BY)
+    category: transpilation
+    note: Default NULLS FIRST/LAST differs; affects window/top-N results.
+
+# Remediation templates keyed by RootCauseCategory value.
+remediation:
+  type_precision: >-
+    Re-map the source NUMBER(p,s)/DECIMAL to a Databricks DECIMAL(p,s) that preserves precision and
+    scale instead of DOUBLE/FLOAT, then reload the affected column.
+  timezone: >-
+    Normalize timestamps explicitly during load (convert TIMESTAMP_LTZ/TZ to UTC) and store as
+    TIMESTAMP, or use TIMESTAMP_NTZ consistently on both sides.
+  semi_structured: >-
+    Compare parsed JSON values rather than raw serialized text; if the payloads are semantically
+    equal, treat as benign or add a canonicalization step (sorted keys) before reconciling.
+  string_format: >-
+    Add TRIM/normalization (case, Unicode NFC) in the transform or align collation; if purely
+    cosmetic, adjust the recon transformation/tolerance.
+  transpilation: >-
+    Fix the translated SQL to match source semantics (e.g. set week start for DATE_TRUNC, align
+    ROUND mode, correct SPLIT_PART indexing), then re-run the transform.
+  volume_missing: >-
+    Investigate the load filter/watermark; back-fill late-arriving or filtered rows and make the
+    incremental load idempotent.
+  volume_extra: >-
+    Fix the fan-out join or add de-duplication; ensure the load is idempotent so re-runs do not
+    duplicate rows.
+  upstream_drift: >-
+    Not a migration defect. Align source/target snapshot times or route to the data owner; the
+    source data itself changed or was not populated.
+  null_boolean: >-
+    Map source NULL/empty and boolean encodings ('Y'/'N', 1/0) explicitly to Databricks NULL/BOOLEAN.
+  env_config: >-
+    Align session settings (timezone, ANSI mode, collation) between the reconciliation runs.
+  recon_config: >-
+    Review the reconcile configuration (join keys, transformations, tolerance thresholds).

@@ -17,13 +17,15 @@ format:  ## Auto-format / fix imports with ruff
 	ruff check . --fix
 	ruff format .
 
-sync:  ## Vendor rca_engine/ into the skill folder (local only, no workspace import)
-	rm -rf skill/rca-recon/rca_engine
+sync:  ## Vendor rca_engine/ into the skill and app folders (local only, no workspace import)
+	rm -rf skill/rca-recon/rca_engine app/rca_engine
 	rsync -a --exclude '__pycache__' --exclude '*.pyc' rca_engine/ skill/rca-recon/rca_engine/
-	@echo "Vendored rca_engine -> skill/rca-recon/rca_engine"
+	rsync -a --exclude '__pycache__' --exclude '*.pyc' rca_engine/ app/rca_engine/
+	@echo "Vendored rca_engine -> skill/rca-recon/rca_engine and app/rca_engine"
 
-check-sync:  ## Fail if the vendored skill engine is out of sync with rca_engine/
+check-sync:  ## Fail if a vendored engine copy is out of sync with rca_engine/
 	@diff -rq --exclude='__pycache__' rca_engine skill/rca-recon/rca_engine \
+		&& diff -rq --exclude='__pycache__' rca_engine app/rca_engine \
 		&& echo "Vendored engine is in sync." \
 		|| (echo "Out of sync — run 'make sync'." && exit 1)
 

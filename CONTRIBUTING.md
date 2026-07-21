@@ -42,12 +42,13 @@ match rates → validation → findings → conclusion) and update `tests/test_r
 
 ## Keep the vendored engine in sync
 
-The skill ships a **vendored copy** of the engine at `skill/rca-recon/rca_engine/`. After changing
-`rca_engine/`, re-vendor it (CI enforces they match):
+The skill and the app each ship a **vendored copy** of the engine
+(`skill/rca-recon/rca_engine/` and `app/rca_engine/`). After changing `rca_engine/`,
+re-vendor both (CI enforces they match):
 
 ```bash
-make sync            # rsync rca_engine/ -> skill/rca-recon/rca_engine/ (no workspace import)
-# or, to also import to the workspace:
+make sync            # rsync rca_engine/ -> skill + app copies (no workspace import)
+# or, to also import the skill to the workspace:
 ./sync_skill.sh <profile>
 ```
 

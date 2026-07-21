@@ -1,0 +1,17 @@
+# Node
+frontend/node_modules/
+npm-debug.log*
+
+# Keep the built frontend for deployment (root .gitignore ignores dist/ — re-include it).
+!frontend/dist/
+!frontend/dist/**
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Databricks / OS
+.databricks/
+.DS_Store
