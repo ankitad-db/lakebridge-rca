@@ -13,6 +13,7 @@ import re
 from typing import Any
 
 from rca_engine.models import Finding, RcaResult, ReconType, RootCauseCategory, Verdict
+from rca_engine.severity import severity_badge, severity_score
 
 # Verdict presentation (symbol + label + one-line action).
 _VERDICT = {
@@ -151,6 +152,10 @@ def build_tldr(result: RcaResult) -> str:
         sym, label, action = _VERDICT[v]
         lines.append(f"| {sym} {label} | {counts.get(v.value, 0)} | {action} |")
     lines.append("")
+    tp = build_top_priorities(result)
+    if tp:
+        lines.append(tp)
+        lines.append("")
     lines.append(build_overview(result))
     lines.append("")
     mr = build_matchrates(result)
@@ -164,16 +169,15 @@ def build_tldr(result: RcaResult) -> str:
         if h:
             by_verdict.setdefault(h.verdict, []).append(f)
 
-    lines += ["", "## 🎯 Findings by verdict"]
+    lines += ["", "## 🎯 Findings by verdict _(highest impact first)_"]
     for v in _VERDICT_ORDER:
-        group = sorted(by_verdict.get(v, []),
-                       key=lambda x: x.top_hypothesis.confidence if x.top_hypothesis else 0, reverse=True)
+        group = sorted(by_verdict.get(v, []), key=severity_score, reverse=True)
         if not group:
             continue
         sym, label, action = _VERDICT[v]
         lines += ["", f"## {sym} {label} — _{action}_", "",
-                  "| Location | Category | Conf. | ✔ | Root cause |",
-                  "| :-- | :-- | :-- | :-: | :-- |"]
+                  "| Location | Severity | Category | Conf. | ✔ | Root cause |",
+                  "| :-- | :-- | :-- | :-: | :-: | :-- |"]
         for f in group:
             h = f.top_hypothesis
             check = "✓" if _confirmed(f) else "·"
@@ -181,8 +185,31 @@ def build_tldr(result: RcaResult) -> str:
             if len(rationale) > 110:
                 rationale = rationale[:107] + "..."
             lines.append(
-                f"| `{_loc(f)}` | {_cat_label(h.category)} | {h.confidence:.0%} | {check} | {rationale} |"
+                f"| `{_loc(f)}` | {severity_badge(f)} | {_cat_label(h.category)} | "
+                f"{h.confidence:.0%} | {check} | {rationale} |"
             )
+    return "\n".join(lines)
+
+
+def build_top_priorities(result: RcaResult, n: int = 5) -> str:
+    """The highest-impact findings across the whole run, so a reader sees what to
+    tackle first before scrolling the per-verdict tables."""
+
+    actionable = [f for f in result.findings
+                  if f.top_hypothesis and f.top_hypothesis.verdict != Verdict.BENIGN]
+    if not actionable:
+        return ""
+    ranked = sorted(actionable, key=severity_score, reverse=True)[:n]
+    lines = ["## 🔺 Top priorities", "",
+             "| Severity | Location | Verdict | Fix / next step |",
+             "| :-- | :-- | :-- | :-- |"]
+    for f in ranked:
+        h = f.top_hypothesis
+        sym = _VERDICT[h.verdict][0]
+        fix = (h.remediation or h.rationale or "").replace("\n", " ").strip()
+        if len(fix) > 90:
+            fix = fix[:87] + "..."
+        lines.append(f"| {severity_badge(f)} ({severity_score(f)}) | `{_loc(f)}` | {sym} | {fix} |")
     return "\n".join(lines)
 
 
@@ -196,8 +223,7 @@ def build_conclusion(result: RcaResult) -> str:
 
     def _rows(v: Verdict) -> list[str]:
         out = []
-        for f in sorted(by_verdict.get(v, []),
-                        key=lambda x: x.top_hypothesis.confidence, reverse=True):
+        for f in sorted(by_verdict.get(v, []), key=severity_score, reverse=True):
             h = f.top_hypothesis
             fix = (h.remediation or h.rationale or "").replace("\n", " ").strip()
             if len(fix) > 130:
@@ -471,11 +497,19 @@ def _subresult(result: RcaResult, target_table: str) -> RcaResult:
 def build_index_notebook(result: RcaResult, table_files: dict[str, str]) -> dict[str, Any]:
     """A master routing notebook: overall TL;DR + a per-table index linking each notebook."""
     cells = [_md_cell(build_tldr(result))]
-    rows = ["| Table | Verdicts | Findings | Notebook |", "|---|---|---|---|"]
-    for tbl in _target_tables(result):
+    rows = ["| Table | Max severity | Verdicts | Findings | Notebook |",
+            "|---|---|---|---|---|"]
+    # Sort tables by their worst finding so the riskiest tables surface first.
+    def _max_sev(tbl: str) -> int:
+        fs = [f for f in result.findings if f.target_table == tbl]
+        return max((severity_score(f) for f in fs), default=-1)
+
+    for tbl in sorted(_target_tables(result), key=_max_sev, reverse=True):
         fs = [f for f in result.findings if f.target_table == tbl]
         badge = _verdict_badges(fs) if fs else "✅ clean"
-        rows.append(f"| `{tbl}` | {badge} | {len(fs)} | `{table_files.get(tbl, '—')}` |")
+        worst = max(fs, key=severity_score) if fs else None
+        sev_cell = severity_badge(worst) if worst else "🟢 —"
+        rows.append(f"| `{tbl}` | {sev_cell} | {badge} | {len(fs)} | `{table_files.get(tbl, '—')}` |")
     cells.append(_md_cell("---\n# 🗂️ Per-table RCA notebooks\n\nOne notebook per reconciled "
                           "table (open the file listed below). Route each to its owner.\n\n"
                           + "\n".join(rows)))
@@ -486,6 +520,17 @@ def build_index_notebook(result: RcaResult, table_files: dict[str, str]) -> dict
         "nbformat": 4,
         "nbformat_minor": 5,
     }
+
+
+def build_summary_md(result: RcaResult) -> str:
+    """A standalone, shareable markdown summary (TL;DR + conclusion) that can be
+    pasted straight into a ticket, Slack, or email without opening a notebook."""
+    return build_tldr(result) + "\n\n---\n\n" + build_conclusion(result)
+
+
+def write_summary_md(result: RcaResult, path: str) -> None:
+    with open(path, "w") as f:
+        f.write(build_summary_md(result))
 
 
 def _table_filename(target_table: str) -> str:
@@ -503,6 +548,7 @@ def write_rca_bundle(result: RcaResult, base_dir: str, recon_id: str,
 
         <base_dir>/rca_<recon_id>/
             00_index.ipynb          master overview + per-table routing (multi-table)
+            SUMMARY.md              shareable plain-markdown summary (ticket/Slack/email)
             rca_<recon_id>.json     full machine-readable findings
             <table>.ipynb           one self-contained notebook per reconciled table
             rca_<recon_id>_all.ipynb  optional single-scroll combined book (combined=True)
@@ -516,6 +562,7 @@ def write_rca_bundle(result: RcaResult, base_dir: str, recon_id: str,
     os.makedirs(folder, exist_ok=True)
 
     write_json(result, os.path.join(folder, f"rca_{recon_id}.json"))
+    write_summary_md(result, os.path.join(folder, "SUMMARY.md"))
 
     tables = _target_tables(result)
     table_files: dict[str, str] = {}

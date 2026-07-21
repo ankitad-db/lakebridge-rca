@@ -93,12 +93,25 @@ def test_write_rca_bundle_folder_layout(tmp_path):
     folder = write_rca_bundle(res, str(tmp_path), "r1")
     assert folder.endswith("rca_r1")
     files = set(os.listdir(folder))
-    # per-recon folder: index + findings JSON + one notebook per table (short names)
+    # per-recon folder: index + summary + findings JSON + one notebook per table
     assert "00_index.ipynb" in files
+    assert "SUMMARY.md" in files
     assert "rca_r1.json" in files
     assert {"fact.ipynb", "dim.ipynb", "clean.ipynb"} <= files
     # combined book only when requested
     assert "rca_r1_all.ipynb" not in files
+
+
+def test_summary_md_is_shareable_markdown(tmp_path):
+    import os
+
+    from rca_engine.report import build_summary_md
+
+    md = build_summary_md(_multi_table_result())
+    assert "# 🧭 RCA Summary" in md and "Conclusion" in md
+    folder = write_rca_bundle(_multi_table_result(), str(tmp_path), "r9")
+    with open(os.path.join(folder, "SUMMARY.md")) as f:
+        assert "RCA Summary" in f.read()
 
 
 def test_write_rca_bundle_combined_and_single_table(tmp_path):

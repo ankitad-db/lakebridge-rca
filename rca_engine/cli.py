@@ -31,7 +31,10 @@ def _build_runner(profile: str | None, warehouse_id: str | None):
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run RCA on a Lakebridge reconcile run.")
-    parser.add_argument("--recon-id", required=True)
+    parser.add_argument("--recon-id", default=None,
+                        help="The reconcile run to analyze. Omit with --list to discover one.")
+    parser.add_argument("--list", action="store_true",
+                        help="List recent reconcile runs (pick a recon_id) and exit.")
     parser.add_argument("--recon-catalog", required=True)
     parser.add_argument("--recon-schema", required=True)
     parser.add_argument("--dialect", default="snowflake")
@@ -60,6 +63,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     runner = _build_runner(args.profile, args.warehouse_id)
+
+    if args.list:
+        from rca_engine.discovery import format_recon_runs, list_recon_runs
+        runs = list_recon_runs(runner, args.recon_catalog, args.recon_schema)
+        print(format_recon_runs(runs))
+        return 0
+
+    if not args.recon_id:
+        raise SystemExit("--recon-id is required (or use --list to discover one).")
 
     from rca_engine.analyze import analyze
 

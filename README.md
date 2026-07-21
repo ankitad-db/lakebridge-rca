@@ -38,6 +38,7 @@ Each finding is cross-confirmed by up to **five independent sources**: recon dat
 
 ```
 rca_engine/            # source-agnostic diagnostics package (the engine)
+  discovery.py         #   list recent recon runs so a user can pick a recon_id
   ingest.py            #   reads recon main/metrics/details -> findings + summaries
   probes/              #   numeric, temporal, string, null/boolean, semi-structured
   knowledge/           #   per-dialect knowledge base (snowflake.yaml)
@@ -45,14 +46,15 @@ rca_engine/            # source-agnostic diagnostics package (the engine)
   lakebridge.py        #   parse recon config / transpiled SQL / source DDL (sqlglot)
   lineage.py           #   optional Unity Catalog lineage evidence
   drilldown.py         #   live confirmation queries -> finalize verdicts
-  report.py            #   TL;DR + symbol-coded RCA notebook + JSON
+  severity.py          #   impact-based severity (verdict x blast radius x confidence)
+  report.py            #   TL;DR + top-priorities + per-table notebooks + SUMMARY.md + JSON
   runners.py           #   QueryRunner: Spark (notebook) + Statement API (local)
-  cli.py               #   `rca-run` entrypoint
+  cli.py               #   `rca-run` entrypoint (+ `--list` discovery)
 skill/rca-recon/       # the Genie Code skill (SKILL.md, config.yml, vendored engine)
 migration/             # realistic Snowflake->Databricks test bed (see migration/README.md)
   scenarios.yaml       #   machine-readable ground-truth oracle (22 scenarios)
   edge_cases/          #   edge-case source/target tables
-tests/                 # 55 deterministic pytest cases (no workspace needed)
+tests/                 # 70 deterministic pytest cases (no workspace needed)
 scripts/               # validate_scenarios.py — integration harness vs the oracle
 docs/                  # one-pagers + pitch layout
 ```
@@ -99,6 +101,16 @@ Configuration (catalog/schema/dialect/output location/optional artifacts) lives 
 
 ### B. Locally, against a reconcile run (CLI)
 
+Don't know the `recon_id`? List recent runs first:
+
+```bash
+python -m rca_engine.cli --list \
+  --recon-catalog <catalog> --recon-schema reconcile \
+  --warehouse-id <WAREHOUSE_ID> --profile ps-dr-east
+```
+
+Then analyze one:
+
 ```bash
 python -m rca_engine.cli \
   --recon-id <RECON_ID> \
@@ -112,13 +124,14 @@ python -m rca_engine.cli \
 ```
 
 Produces a self-contained `rca_out/rca_<recon_id>/` folder: `00_index.ipynb`
-(overview + per-table routing), `rca_<recon_id>.json`, and one notebook per
-reconciled table. Add `--combined-notebook` for a single-scroll `rca_<recon_id>_all.ipynb`.
+(overview + **top-priorities**, severity-ranked + per-table routing), a shareable
+`SUMMARY.md`, `rca_<recon_id>.json`, and one notebook per reconciled table. Add
+`--combined-notebook` for a single-scroll `rca_<recon_id>_all.ipynb`.
 
 ### C. Run the tests (no workspace needed)
 
 ```bash
-pytest                       # 55 deterministic unit tests
+pytest                       # 70 deterministic unit tests
 ```
 
 ## End-to-end setup (test bed → recon → RCA)

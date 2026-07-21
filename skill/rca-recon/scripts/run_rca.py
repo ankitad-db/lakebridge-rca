@@ -27,8 +27,17 @@ if str(_SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_DIR))
 
 from rca_engine.analyze import analyze
+from rca_engine.discovery import format_recon_runs, list_recon_runs
 from rca_engine.report import build_tldr, write_rca_bundle
 from rca_engine.runners import SparkQueryRunner
+
+
+def list_runs(spark: Any, limit: int = 20) -> None:
+    """Step 0 — print recent reconcile runs so the user can pick a recon_id."""
+    cfg = _load_config()
+    runs = list_recon_runs(SparkQueryRunner(spark), cfg["recon_catalog"],
+                           cfg["recon_schema"], limit=limit)
+    print(format_recon_runs(runs))
 
 
 def _load_config() -> dict[str, Any]:

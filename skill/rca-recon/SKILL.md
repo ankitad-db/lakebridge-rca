@@ -91,6 +91,16 @@ if SKILL_DIR not in sys.path:
 import rca_engine                 # resolves to ./rca_engine (vendored)
 ```
 
+### 1b. (If the user doesn't have a recon_id) discover recent runs
+If the user hasn't given a `recon_id`, list recent reconcile runs and let them pick.
+Do **not** guess a `recon_id`.
+
+```python
+from scripts.run_rca import list_runs
+list_runs(spark)                 # prints a table of recent recon_ids + which have diffs
+```
+(or `from rca_engine.discovery import list_recon_runs, format_recon_runs`).
+
 ### 2. Run the end-to-end engine (ingest → classify → live drill-down)
 Use the in-notebook Spark session as the query backend. `analyze()` reads
 `main`/`metrics`/`details`, runs deterministic probes, **and then executes a live
@@ -167,10 +177,13 @@ resolved. Do **not** stop if anything is unresolved.
 
 ### 4. Produce the RCA notebook + conclusion
 - `write_rca_bundle(result, out_dir, recon_id)` writes a self-contained
-  **`rca_<recon_id>/`** folder (one per run): a `00_index.ipynb` landing page, the
-  findings JSON, and **one notebook per reconciled table**. Each table notebook is
-  symbol-coded and structured to mirror Lakebridge:
-  1. **🧭 RCA Summary** — verdict counts (with meaning) for the whole `recon_id`.
+  **`rca_<recon_id>/`** folder (one per run): a `00_index.ipynb` landing page, a
+  shareable **`SUMMARY.md`** (paste into a ticket/Slack/email), the findings JSON,
+  and **one notebook per reconciled table**. Each table notebook is symbol-coded and
+  structured to mirror Lakebridge:
+  1. **🧭 RCA Summary** — verdict counts (with meaning) for the whole `recon_id`,
+     plus a **🔺 Top priorities** table (highest **severity** first — impact-ranked by
+     verdict × blast radius × confidence, not just confidence).
   2. **📋 Reconciliation overview** — one row per table pair showing schema,
      row-level (missing in target / extra in target), mismatched columns, and a
      verdict rollup — the same breakdown Lakebridge reports.
