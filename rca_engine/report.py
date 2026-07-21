@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from typing import Any
 
 from rca_engine.models import Finding, RcaResult, ReconType, RootCauseCategory, Verdict
@@ -487,19 +488,51 @@ def build_index_notebook(result: RcaResult, table_files: dict[str, str]) -> dict
     }
 
 
-def write_notebooks_per_table(result: RcaResult, out_dir: str, prefix: str = "rca") -> list[str]:
-    """Write one notebook per reconciled table plus an index; returns paths (index first)."""
+def _table_filename(target_table: str) -> str:
+    """Filesystem-safe notebook name from the (short) target table name."""
+    short = target_table.split(".")[-1].strip("`") or target_table
+    safe = re.sub(r"[^0-9A-Za-z_.-]", "_", short)
+    return f"{safe}.ipynb"
+
+
+def write_rca_bundle(result: RcaResult, base_dir: str, recon_id: str,
+                     combined: bool = False) -> str:
+    """Write the RCA as a self-contained per-recon folder and return its path.
+
+    Layout (recommended)::
+
+        <base_dir>/rca_<recon_id>/
+            00_index.ipynb          master overview + per-table routing (multi-table)
+            rca_<recon_id>.json     full machine-readable findings
+            <table>.ipynb           one self-contained notebook per reconciled table
+            rca_<recon_id>_all.ipynb  optional single-scroll combined book (combined=True)
+
+    One folder per ``recon_id`` keeps runs isolated; per-table notebooks route to
+    owners; the index is the landing page.
+    """
     import os
 
-    os.makedirs(out_dir, exist_ok=True)
+    folder = os.path.join(base_dir, f"rca_{recon_id}")
+    os.makedirs(folder, exist_ok=True)
+
+    write_json(result, os.path.join(folder, f"rca_{recon_id}.json"))
+
+    tables = _target_tables(result)
     table_files: dict[str, str] = {}
-    written: list[str] = []
-    for tbl in _target_tables(result):
-        fname = f"{prefix}_{tbl}.ipynb"
-        write_notebook(_subresult(result, tbl), os.path.join(out_dir, fname))
+    for tbl in tables:
+        fname = _table_filename(tbl)
+        # Disambiguate rare short-name collisions across schemas.
+        if fname in table_files.values():
+            fname = _table_filename(tbl.replace(".", "_"))
+        write_notebook(_subresult(result, tbl), os.path.join(folder, fname))
         table_files[tbl] = fname
-        written.append(os.path.join(out_dir, fname))
-    idx_path = os.path.join(out_dir, f"{prefix}_index.ipynb")
-    with open(idx_path, "w") as f:
-        json.dump(build_index_notebook(result, table_files), f, indent=1)
-    return [idx_path, *written]
+
+    # Index is the landing page; only meaningful once there is more than one table.
+    if len(tables) > 1:
+        with open(os.path.join(folder, "00_index.ipynb"), "w") as f:
+            json.dump(build_index_notebook(result, table_files), f, indent=1)
+
+    if combined:
+        write_notebook(result, os.path.join(folder, f"rca_{recon_id}_all.ipynb"))
+
+    return folder

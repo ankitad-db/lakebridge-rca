@@ -101,7 +101,7 @@ finalizing the verdict/confidence). This is the concluded result — not a guess
 import yaml
 from rca_engine.runners import SparkQueryRunner
 from rca_engine.analyze import analyze
-from rca_engine.report import build_tldr, write_json, write_notebook
+from rca_engine.report import build_tldr, write_rca_bundle
 
 import os
 cfg = yaml.safe_load(open("config.yml"))            # relative to this skill folder
@@ -123,15 +123,15 @@ result = analyze(
     dialect=cfg.get("dialect", "snowflake"), drilldown=True,
 )
 print(build_tldr(result))
-write_notebook(result, os.path.join(out_dir, f"rca_{recon_id}.ipynb"))  # combined report
 
-# Multi-table recon: also emit one notebook per table + a master index, so each
-# table is its own owner-routable notebook (sections are already split per table
-# inside the combined notebook too).
-from rca_engine.report import write_notebooks_per_table
-if len(result.table_summaries) > 1:
-    write_notebooks_per_table(result, os.path.join(out_dir, f"rca_{recon_id}_tables"),
-                              prefix=f"rca_{recon_id}")
+# One self-contained folder per recon run:
+#   <out_dir>/rca_<recon_id>/
+#       00_index.ipynb        overview + per-table routing (multi-table runs)
+#       rca_<recon_id>.json   full findings
+#       <table>.ipynb         one notebook per reconciled table
+# Set combined=True to also write a single-scroll rca_<recon_id>_all.ipynb.
+folder = write_rca_bundle(result, out_dir, recon_id,
+                          combined=cfg.get("combined_notebook", False))
 ```
 
 `scripts/run_rca.py` also accepts the location: `run(recon_id, spark, out_dir=...)`
@@ -166,8 +166,10 @@ Update each finding's verdict/confidence with what the query shows. Iterate unti
 resolved. Do **not** stop if anything is unresolved.
 
 ### 4. Produce the RCA notebook + conclusion
-- `write_notebook(result, os.path.join(out_dir, f"rca_{recon_id}.ipynb"))` emits a
-  symbol-coded report to the user-chosen `out_dir`, structured to mirror Lakebridge:
+- `write_rca_bundle(result, out_dir, recon_id)` writes a self-contained
+  **`rca_<recon_id>/`** folder (one per run): a `00_index.ipynb` landing page, the
+  findings JSON, and **one notebook per reconciled table**. Each table notebook is
+  symbol-coded and structured to mirror Lakebridge:
   1. **🧭 RCA Summary** — verdict counts (with meaning) for the whole `recon_id`.
   2. **📋 Reconciliation overview** — one row per table pair showing schema,
      row-level (missing in target / extra in target), mismatched columns, and a
@@ -185,13 +187,12 @@ resolved. Do **not** stop if anything is unresolved.
 - The markdown is rendered from the concluded result, so every verdict is already
   backed by an executed drill-down query, and per-column counts are reconciled to
   the exact number of differing rows (recon `details` only stores a sample).
-- **Per-table notebooks (multi-table recon):** the combined notebook always splits
-  the findings into a top-level section **per table pair** (`## 📦 <table>`). When a
-  recon covers more than one table, also call `write_notebooks_per_table(result,
-  out_dir, prefix=...)` to emit **one self-contained notebook per table** plus a
-  master **index** notebook that links each table to its verdict rollup — so each
-  table can be routed to its owner independently. This is on by default in
-  `scripts/run_rca.py` (config `notebook_per_table: true`).
+- **Per-table by default (multi-table recon):** `write_rca_bundle` emits one
+  notebook per reconciled table inside `rca_<recon_id>/`, plus a `00_index.ipynb`
+  that links each table to its verdict rollup — so each table routes to its owner
+  independently. Set `combined_notebook: true` (config) or `combined=True` to also
+  write a single-scroll `rca_<recon_id>_all.ipynb` where each table is a top-level
+  section (`## 📦 <table>`). `scripts/run_rca.py` does all of this for you.
 - **Recon customization is respected:** if the Lakebridge reconcile config uses
   `column_mapping`, `transformations`, `column_thresholds`, `table_thresholds`,
   `filters`, or `select/drop_columns`, the engine ingests them and adds
@@ -199,14 +200,14 @@ resolved. Do **not** stop if anything is unresolved.
   "mismatch exceeds the ±0.005 tolerance"). See `migration/recon/README.md`.
 
 ### 5. Confirm with the user, then run all cells
-- After writing the notebook, **pause and ask the user for approval** before
-  executing it. Show the TL;DR and the actual saved path, then ask explicitly, e.g.:
-  _"The RCA notebook is generated at `<out_dir>/rca_<recon_id>.ipynb`. Are the
-  findings and proposed fixes acceptable? Reply **yes** to run all cells, or tell me
-  what to adjust."_
-- **Do not run the notebook until the user confirms.** If they request changes
+- After writing the notebooks, **pause and ask the user for approval** before
+  executing them. Show the TL;DR and the actual saved folder, then ask explicitly, e.g.:
+  _"The RCA is generated at `<out_dir>/rca_<recon_id>/` (open `00_index.ipynb`). Are
+  the findings and proposed fixes acceptable? Reply **yes** to run all cells, or tell
+  me what to adjust."_
+- **Do not run the notebooks until the user confirms.** If they request changes
   (reclassify a finding, add a drill-down, tweak a fix/owner), apply them, regenerate
-  the notebook, and ask again.
+  the bundle, and ask again.
 - **On approval, run all cells** top-to-bottom so every confirming query executes
   live and the outputs are captured in the notebook.
 
@@ -217,8 +218,8 @@ sections):
 - If an output matches the stated conclusion, leave it.
 - If an output changed the picture (e.g. offset is no longer constant, source is
   actually populated, extra rows are duplicates not new keys), **update that
-  finding** (verdict, confidence, rationale, owner) and **regenerate the notebook**
-  (`write_notebook`) so the TL;DR and 🧾 Conclusion always match the evidence.
+  finding** (verdict, confidence, rationale, owner) and **regenerate the bundle**
+  (`write_rca_bundle`) so the TL;DR and 🧾 Conclusion always match the evidence.
 - If any finding is still unresolved, mark it **needs review** with the exact next
   query/owner. Then restate the final verdict counts to the user.
 
@@ -240,9 +241,9 @@ executed evidence must agree.
 
 **Example 1 — full run from a recon id**
 - User: _"Run an RCA on Lakebridge reconcile `recon_id=0fe6...b747bf`."_
-- You: load `config.yml`, `run(recon_id, spark)`, print the TL;DR, save the notebook
-  under `/Workspace/Users/<user>/rca_notebooks/`, then ask for approval. On "yes",
-  run all cells and reconcile. Expected shape of the answer:
+- You: load `config.yml`, `run(recon_id, spark)`, print the TL;DR, save the bundle
+  under `/Workspace/Users/<user>/rca_notebooks/rca_<recon_id>/`, then ask for
+  approval. On "yes", run all cells and reconcile. Expected shape of the answer:
   _"9 migration-induced, 3 genuine data differences, 1 benign. Fix in migration:
   `fact_order_items.amount` (DECIMAL→DOUBLE scale loss), `fact_orders.order_ts`
   (constant 5.5h tz offset), `agg_daily_sales.revenue` (ROUND diff)… Route to data

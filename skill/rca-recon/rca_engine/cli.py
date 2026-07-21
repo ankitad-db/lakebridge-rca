@@ -11,7 +11,7 @@ import argparse
 import os
 import sys
 
-from rca_engine.report import build_tldr, write_json, write_notebook, write_notebooks_per_table
+from rca_engine.report import build_tldr, write_rca_bundle
 
 
 def _build_runner(profile: str | None, warehouse_id: str | None):
@@ -35,8 +35,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recon-catalog", required=True)
     parser.add_argument("--recon-schema", required=True)
     parser.add_argument("--dialect", default="snowflake")
-    parser.add_argument("--output-path", default="rca_output",
-                        help="Base path for the generated .json/.ipynb (dirs are created).")
+    parser.add_argument("--output-dir", default="rca_output",
+                        help="Base directory; a self-contained rca_<recon_id>/ folder is created "
+                             "inside it (index + per-table notebooks + findings JSON).")
     parser.add_argument("--profile", default=None)
     parser.add_argument("--warehouse-id", default=None)
     parser.add_argument("--no-drilldown", action="store_true",
@@ -53,9 +54,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="YAML/JSON with an explicit per-table source/target script mapping.")
     parser.add_argument("--use-lineage", action="store_true",
                         help="Attach UC lineage evidence (system.access.*_lineage) when available.")
-    parser.add_argument("--notebook-per-table", action="store_true",
-                        help="Also emit one notebook per reconciled table + an index, next to "
-                             "the combined notebook.")
+    parser.add_argument("--combined-notebook", action="store_true",
+                        help="Also write a single-scroll combined notebook (rca_<id>_all.ipynb) "
+                             "alongside the per-table notebooks.")
     args = parser.parse_args(argv)
 
     runner = _build_runner(args.profile, args.warehouse_id)
@@ -82,19 +83,11 @@ def main(argv: list[str] | None = None) -> int:
         use_lineage=args.use_lineage,
     )
 
-    parent = os.path.dirname(args.output_path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    write_json(result, f"{args.output_path}.json")
-    write_notebook(result, f"{args.output_path}.ipynb")
+    os.makedirs(args.output_dir, exist_ok=True)
+    folder = write_rca_bundle(result, args.output_dir, args.recon_id,
+                              combined=args.combined_notebook)
     print(build_tldr(result))
-    print(f"\nArtifacts: {args.output_path}.json  {args.output_path}.ipynb")
-
-    if args.notebook_per_table and len(result.table_summaries) > 1:
-        tables_dir = f"{args.output_path}_tables"
-        paths = write_notebooks_per_table(result, tables_dir,
-                                          prefix=f"rca_{args.recon_id}")
-        print(f"Per-table notebooks ({len(paths) - 1}) + index in: {tables_dir}")
+    print(f"\nArtifacts in: {folder}")
     return 0
 
 

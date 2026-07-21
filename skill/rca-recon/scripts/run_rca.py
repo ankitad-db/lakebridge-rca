@@ -27,7 +27,7 @@ if str(_SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_DIR))
 
 from rca_engine.analyze import analyze
-from rca_engine.report import build_tldr, write_json, write_notebook, write_notebooks_per_table
+from rca_engine.report import build_tldr, write_rca_bundle
 from rca_engine.runners import SparkQueryRunner
 
 
@@ -92,19 +92,13 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None):
         use_lineage=bool(cfg.get("use_uc_lineage", False)),
     )
 
-    base = os.path.join(out_dir, f"rca_{recon_id}")
-    write_json(result, f"{base}.json")
-    write_notebook(result, f"{base}.ipynb")
+    # One self-contained folder per recon run: rca_<id>/ with 00_index.ipynb, the
+    # findings JSON, and one notebook per reconciled table (see write_rca_bundle).
+    folder = write_rca_bundle(result, out_dir, recon_id,
+                              combined=bool(cfg.get("combined_notebook", False)))
     print(build_tldr(result))
-    print(f"\nArtifacts: {base}.json  {base}.ipynb")
-
-    # Per-table notebooks (default): one notebook per reconciled table + an index,
-    # so multi-table recon runs split into per-owner sections instead of one long book.
-    if cfg.get("notebook_per_table", True) and len(result.table_summaries) > 1:
-        tables_dir = f"{base}_tables"
-        paths = write_notebooks_per_table(result, tables_dir, prefix=f"rca_{recon_id}")
-        print(f"Per-table notebooks ({len(paths) - 1}) + index in: {tables_dir}")
-        print(f"  index: {paths[0]}")
+    print(f"\nArtifacts in: {folder}")
+    print(f"  open {os.path.join(folder, '00_index.ipynb')} to route each table")
     return result
 
 

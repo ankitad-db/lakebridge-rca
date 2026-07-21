@@ -16,7 +16,7 @@ from rca_engine.report import (
     build_notebook,
     build_tldr,
     to_dict,
-    write_notebooks_per_table,
+    write_rca_bundle,
 )
 
 
@@ -86,14 +86,33 @@ def _multi_table_result() -> RcaResult:
     return RcaResult(recon_id="r1", dialect="snowflake", findings=findings, table_summaries=summ)
 
 
-def test_write_notebooks_per_table(tmp_path):
+def test_write_rca_bundle_folder_layout(tmp_path):
+    import os
+
     res = _multi_table_result()
-    paths = write_notebooks_per_table(res, str(tmp_path), prefix="rca_r1")
-    # index + one notebook per target table (fact, dim, clean)
-    assert len(paths) == 4
-    assert paths[0].endswith("rca_r1_index.ipynb")
-    names = {p.split("/")[-1] for p in paths[1:]}
-    assert names == {"rca_r1_tgt.fact.ipynb", "rca_r1_tgt.dim.ipynb", "rca_r1_tgt.clean.ipynb"}
+    folder = write_rca_bundle(res, str(tmp_path), "r1")
+    assert folder.endswith("rca_r1")
+    files = set(os.listdir(folder))
+    # per-recon folder: index + findings JSON + one notebook per table (short names)
+    assert "00_index.ipynb" in files
+    assert "rca_r1.json" in files
+    assert {"fact.ipynb", "dim.ipynb", "clean.ipynb"} <= files
+    # combined book only when requested
+    assert "rca_r1_all.ipynb" not in files
+
+
+def test_write_rca_bundle_combined_and_single_table(tmp_path):
+    import os
+
+    res = _multi_table_result()
+    folder = write_rca_bundle(res, str(tmp_path), "r2", combined=True)
+    assert "rca_r2_all.ipynb" in set(os.listdir(folder))
+
+    single = write_rca_bundle(_sample_result(), str(tmp_path), "r3")
+    files = set(os.listdir(single))
+    # single-table run: no index page, just the one table + json
+    assert "00_index.ipynb" not in files
+    assert "fact.ipynb" in files and "rca_r3.json" in files
 
 
 def test_index_notebook_lists_all_tables():

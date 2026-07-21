@@ -105,13 +105,15 @@ python -m rca_engine.cli \
   --recon-catalog <catalog> --recon-schema reconcile \
   --dialect snowflake \
   --warehouse-id <WAREHOUSE_ID> --profile ps-dr-east \
-  --output-path rca_out
+  --output-dir rca_out
 # optional code-aware inputs:
 #   --recon-config <path> --transpiled-output <dir> --source-scripts <dir> \
-#   --transpile-errors <file> --use-lineage
+#   --transpile-errors <file> --use-lineage --combined-notebook
 ```
 
-Produces `rca_out.json` and `rca_out.ipynb`.
+Produces a self-contained `rca_out/rca_<recon_id>/` folder: `00_index.ipynb`
+(overview + per-table routing), `rca_<recon_id>.json`, and one notebook per
+reconciled table. Add `--combined-notebook` for a single-scroll `rca_<recon_id>_all.ipynb`.
 
 ### C. Run the tests (no workspace needed)
 

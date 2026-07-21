@@ -23,11 +23,15 @@ warehouse_id: 4c79c6902dd2bbc2
 #       /tmp                                (driver-local, ephemeral)
 output_dir: rca_notebooks
 
-# When a recon run covers multiple tables, also emit ONE notebook per table plus a
-# master index (rca_<id>_tables/), so each table becomes its own owner-routable
-# notebook instead of one long book. The combined rca_<id>.ipynb is always written
-# too. Set false to only write the combined notebook. Default: true.
-notebook_per_table: true
+# Output layout: each run writes a self-contained folder under output_dir:
+#   <output_dir>/rca_<recon_id>/
+#       00_index.ipynb        master overview + per-table routing (multi-table runs)
+#       rca_<recon_id>.json   full machine-readable findings
+#       <table>.ipynb         one self-contained notebook per reconciled table
+# Set combined_notebook: true to ALSO write a single-scroll rca_<recon_id>_all.ipynb
+# containing every table's findings in one book. Default: false (the index + per-table
+# notebooks are the recommended navigation).
+combined_notebook: false
 
 # The deterministic engine (rca_engine) is vendored inside this skill folder, so
 # it imports directly from the workspace — no external package install is needed.
