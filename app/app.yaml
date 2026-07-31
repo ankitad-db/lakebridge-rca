@@ -47,3 +47,38 @@ env:
   # The app's service principal needs write (CAN_MANAGE) on this folder.
   - name: RCA_NOTEBOOK_DIR
     value: "/Workspace/Users/ankita.darekar@databricks.com/rca_notebooks"
+
+  # Append-only audit trail: each reconcile/RCA step logs one row here (grouped by
+  # run_id). Defaults to <RCA_RECON_CATALOG>.<RCA_RECON_SCHEMA>.rca_genie_audit when
+  # unset; set a fully-qualified name to relocate, or "off" to disable. The SP needs
+  # CREATE TABLE + MODIFY on the containing schema (the table is auto-created).
+  - name: RCA_AUDIT_TABLE
+    value: "fevm_ps_dr_us_east_2_catalog.reconcile.rca_genie_audit"
+
+  # Tier-2 LLM fallback: after the deterministic pass, ask a Foundation Model
+  # serving endpoint to resolve residual (needs-review/unknown) findings — it
+  # proposes a cause + a confirming SQL query, which the engine runs and promotes
+  # ONLY if the query confirms (never a bare LLM guess). The SP needs "Can Query"
+  # on the endpoint. Set RCA_LLM_FALLBACK to "false" to disable.
+  - name: RCA_LLM_FALLBACK
+    value: "true"
+  - name: RCA_LLM_ENDPOINT
+    value: "databricks-meta-llama-3-3-70b-instruct"
+
+  # Invoke the Genie Code skill as a Databricks Job (serverless) so the skill's own
+  # code does ALL actions (reconcile + RCA + notebook publish + audit); the app just
+  # submits the run, polls it, and reads the bundle back. Set RCA_USE_SKILL_JOB to
+  # "false" to fall back to the in-process engine path.
+  #   RCA_SKILL_DIR      = workspace folder of the deployed skill (contains scripts/, config.yml)
+  #   RCA_SKILL_NOTEBOOK = the skill's job_entry notebook (imported from scripts/job_entry.py)
+  #   RCA_SKILL_OUT_DIR  = workspace base the skill job writes rca_<id>/ bundles + notebooks into
+  # The app's service principal needs: CAN_RUN on jobs + serverless, CAN_READ on the
+  # skill dir, CAN_MANAGE on the out dir.
+  - name: RCA_USE_SKILL_JOB
+    value: "true"
+  - name: RCA_SKILL_DIR
+    value: "/Workspace/Users/ankita.darekar@databricks.com/rca-recon-skill"
+  - name: RCA_SKILL_NOTEBOOK
+    value: "/Workspace/Users/ankita.darekar@databricks.com/rca-recon-skill/scripts/job_entry"
+  - name: RCA_SKILL_OUT_DIR
+    value: "/Workspace/Users/ankita.darekar@databricks.com/rca_skill_out"

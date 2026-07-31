@@ -71,6 +71,32 @@ class Evidence:
 
 
 @dataclass
+class Fix:
+    """A concrete, runnable remediation for a finding — the corrected transform
+    expression, a recon-config change, or a load/back-fill statement.
+
+    It is a **suggestion**: the engine never applies it. The RCA notebook surfaces it
+    in a cell the reviewer inspects and runs manually. ``target`` says what it changes:
+    ``transform`` (migrated SQL), ``recon_config`` (tolerance/mapping), or ``load``
+    (back-fill / de-dup / watermark).
+    """
+
+    title: str
+    kind: str
+    sql: str
+    target: str = "transform"
+    rationale: str = ""
+    confidence: float = 0.0
+    # Fix-validation gate: an aggregate query that checks the gap this fix addresses is
+    # the *entire* difference (so applying the fix would close it). ``validated`` is set
+    # once the query runs; ``validation`` is the human-readable result. Empty query ⇒ the
+    # fix stays an unvalidated suggestion.
+    validated: bool = False
+    validation: str = ""
+    validation_query: str = ""
+
+
+@dataclass
 class Hypothesis:
     """A candidate explanation for a finding, with a confidence in [0, 1]."""
 
@@ -81,6 +107,8 @@ class Hypothesis:
     remediation: str = ""
     recommended_owner: str = ""
     evidence: list[Evidence] = field(default_factory=list)
+    # A concrete, runnable fix generated for this hypothesis (see rca_engine/fixgen.py).
+    fix: Optional["Fix"] = None
 
 
 @dataclass
@@ -126,6 +154,13 @@ class TableSummary:
     schema_ok: bool = True
     join_keys: list[str] = field(default_factory=list)
     date_column: Optional[str] = None  # best-guess date/timestamp col for range filtering
+    # Unity Catalog tables that consume this target (downstream blast radius). Populated
+    # by the lineage pass so the report can prioritize a fix by how far a defect propagates.
+    downstream_tables: list[str] = field(default_factory=list)
+    # Optional grounded, per-table plain-English summary authored by the Genie Code
+    # synthesis layer (see rca_engine/synthesize.py). Empty unless synthesis ran; it is
+    # description only — it never sets a verdict.
+    narrative: str = ""
 
     @property
     def common_rows(self) -> int:
@@ -145,6 +180,30 @@ class TableSummary:
 
 
 @dataclass
+class RootCauseCluster:
+    """A systemic root cause shared by several findings.
+
+    Migration defects are rarely isolated: one mis-translated ``CAST``, a single
+    session timezone, or one load filter surfaces as value mismatches across many
+    columns and tables. Listing each column separately buries the *one* fix a reader
+    must make. A cluster collapses those findings into a single actionable item with
+    the impacted-columns list, so the report can lead with "fix this, resolve N
+    findings across M columns".
+    """
+
+    category: RootCauseCategory
+    verdict: Verdict
+    signature: str                                     # human label of the shared mechanism
+    remediation: str = ""
+    recommended_owner: str = ""
+    members: list[str] = field(default_factory=list)   # "table.column" locations
+    tables: list[str] = field(default_factory=list)    # distinct target tables spanned
+    finding_count: int = 0
+    rows_impacted: int = 0
+    confidence: float = 0.0
+
+
+@dataclass
 class RcaResult:
     """The full RCA output for a recon run."""
 
@@ -152,6 +211,12 @@ class RcaResult:
     dialect: str
     findings: list[Finding] = field(default_factory=list)
     table_summaries: list[TableSummary] = field(default_factory=list)
+    # Systemic causes that each explain several findings (built after drill-down).
+    clusters: list[RootCauseCluster] = field(default_factory=list)
+    # Optional grounded, run-level plain-English summary authored by the Genie Code
+    # synthesis layer (see rca_engine/synthesize.py). Empty unless synthesis ran; it is
+    # description only — verdicts stay deterministic + query-gated.
+    narrative: str = ""
 
     def verdict_counts(self) -> dict[str, int]:
         counts: dict[str, int] = {v.value: 0 for v in Verdict}

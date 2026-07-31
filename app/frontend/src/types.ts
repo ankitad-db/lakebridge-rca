@@ -10,6 +10,29 @@ export interface AppConfig {
   notebook_dir: string;
   source_schema: string;
   target_schema: string;
+  audit_table: string;
+}
+
+export interface AuditRow {
+  run_id: string;
+  recon_id: string | null;
+  operation: string;          // reconcile | rca
+  status: "ok" | "error";
+  tool: string;               // app | skill | cli
+  run_by: string | null;
+  catalog: string | null;
+  source_schema: string | null;
+  target_schema: string | null;
+  table_pairs: number;
+  pairs_ok: number;
+  pairs_error: number;
+  tables_with_diffs: number;
+  findings_total: number;
+  notebook_path: string | null;
+  message: string | null;
+  duration_ms: number;
+  started_ts: string | null;
+  ended_ts: string | null;
 }
 
 export interface ReconPairInput {

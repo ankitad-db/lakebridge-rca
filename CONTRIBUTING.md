@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for improving the RCA Genie-Code accelerator. This guide covers local setup, the common
+Thanks for improving the ReconResolve accelerator. This guide covers local setup, the common
 extension points, and the checks your change must pass.
 
 ## Development setup

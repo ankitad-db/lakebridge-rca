@@ -7,9 +7,19 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from .. import rca_service as svc
-from ..config import IS_DATABRICKS_APP, load_settings
+from ..config import IS_DATABRICKS_APP, Settings, load_settings
 
 router = APIRouter()
+
+
+def _settings(catalog: str | None = None, dialect: str | None = None) -> Settings:
+    """Settings for the request, optionally scoped to a UI-selected catalog + dialect."""
+    s = load_settings()
+    if catalog:
+        s = s.with_catalog(catalog)
+    if dialect:
+        s = s.with_dialect(dialect)
+    return s
 
 
 class AnalyzeRequest(BaseModel):
@@ -31,6 +41,8 @@ class ReconTablePair(BaseModel):
 
 
 class ReconTriggerRequest(BaseModel):
+    catalog: str | None = None
+    dialect: str | None = None
     source_schema: str | None = None
     target_schema: str | None = None
     tables: list[ReconTablePair]
@@ -56,27 +68,47 @@ def get_config():
         "notebook_dir": s.notebook_dir,
         "source_schema": s.source_schema,
         "target_schema": s.target_schema,
+        "audit_table": s.audit_table,
     }
 
 
+@router.get("/catalogs")
+def get_catalogs():
+    """Catalogs the app can see (for the UI catalog picker)."""
+    return {"catalogs": svc.list_catalogs(load_settings())}
+
+
+@router.get("/dialects")
+def get_dialects():
+    """Source dialects with a curated knowledge base (for the UI dialect picker)."""
+    return {"dialects": svc.list_dialects(load_settings())}
+
+
+@router.get("/audit")
+def get_audit(limit: int = 50, catalog: str | None = None):
+    """Recent pipeline audit rows (reconcile + RCA history), newest first."""
+    s = _settings(catalog)
+    return {"audit_table": s.audit_table, "rows": svc.list_audit(s, limit=limit)}
+
+
 @router.get("/schemas")
-def get_schemas():
+def get_schemas(catalog: str | None = None):
     """Schemas in the recon catalog (for the trigger-recon form)."""
-    return {"schemas": svc.list_schemas(load_settings())}
+    return {"schemas": svc.list_schemas(_settings(catalog))}
 
 
 @router.get("/schemas/{schema}/tables")
-def get_schema_tables(schema: str):
+def get_schema_tables(schema: str, catalog: str | None = None):
     """Tables in a schema of the recon catalog (for the trigger-recon form)."""
-    return {"schema": schema, "tables": svc.list_schema_tables(load_settings(), schema)}
+    return {"schema": schema, "tables": svc.list_schema_tables(_settings(catalog), schema)}
 
 
 @router.post("/recon/trigger")
-def trigger_recon(req: ReconTriggerRequest):
+def trigger_recon(req: ReconTriggerRequest, catalog: str | None = None, dialect: str | None = None):
     """Trigger an app-native reconcile (auto-detect keys, auto-fix, then RCA).
     Returns a token immediately; poll GET /recon/job/{token}."""
     payload = req.model_dump()
-    return svc.start_recon(load_settings(), payload)
+    return svc.start_recon(_settings(req.catalog or catalog, req.dialect or dialect), payload)
 
 
 @router.get("/recon/job/{token}")
@@ -86,13 +118,13 @@ def get_recon_job(token: str):
 
 
 @router.get("/runs")
-def get_runs():
-    return {"runs": svc.list_runs(load_settings())}
+def get_runs(catalog: str | None = None):
+    return {"runs": svc.list_runs(_settings(catalog))}
 
 
 @router.get("/runs/{recon_id}")
-def get_run(recon_id: str):
-    result = svc.load_result(load_settings(), recon_id)
+def get_run(recon_id: str, catalog: str | None = None, dialect: str | None = None):
+    result = svc.load_result(_settings(catalog, dialect), recon_id)
     if result is None:
         raise HTTPException(status_code=404,
                             detail=f"No RCA bundle for '{recon_id}'. Generate one with the "
@@ -101,9 +133,9 @@ def get_run(recon_id: str):
 
 
 @router.get("/runs/{recon_id}/tables")
-def get_tables(recon_id: str):
+def get_tables(recon_id: str, catalog: str | None = None):
     """Table pairs in a recon run, for the one-table-at-a-time analyze flow."""
-    tables = svc.list_tables(load_settings(), recon_id)
+    tables = svc.list_tables(_settings(catalog), recon_id)
     if not tables:
         raise HTTPException(status_code=404,
                             detail=f"No tables found for recon '{recon_id}'. Check the "
@@ -112,10 +144,11 @@ def get_tables(recon_id: str):
 
 
 @router.post("/runs/{recon_id}/analyze")
-def analyze_table(recon_id: str, req: AnalyzeRequest):
+def analyze_table(recon_id: str, req: AnalyzeRequest, catalog: str | None = None,
+                  dialect: str | None = None):
     """Run the RCA for one table (calls the engine the Genie skill uses), publish its
     notebook to the workspace, and return the view + notebook link."""
-    settings = load_settings()
+    settings = _settings(catalog, dialect)
     try:
         result = svc.run_analysis(settings, recon_id, req.table)
     except Exception as exc:
@@ -132,12 +165,13 @@ def analyze_table(recon_id: str, req: AnalyzeRequest):
 
 
 @router.post("/runs/{recon_id}/analyze-all")
-def analyze_all(recon_id: str, req: FullRunRequest | None = None):
+def analyze_all(recon_id: str, req: FullRunRequest | None = None, catalog: str | None = None,
+                dialect: str | None = None):
     """Kick off a full-run RCA (all tables) + publish notebooks to the workspace.
     Returns immediately; poll GET /runs/{recon_id}/job for progress."""
     drilldown = req.drilldown if req else True
     notebook_dir = req.notebook_dir if req else None
-    return svc.start_full_run(load_settings(), recon_id, drilldown=drilldown, notebook_dir=notebook_dir)
+    return svc.start_full_run(_settings(catalog, dialect), recon_id, drilldown=drilldown, notebook_dir=notebook_dir)
 
 
 @router.get("/runs/{recon_id}/job")
@@ -147,8 +181,8 @@ def get_job(recon_id: str):
 
 
 @router.get("/runs/{recon_id}/summary", response_class=PlainTextResponse)
-def get_summary(recon_id: str):
-    md = svc.summary_md(load_settings(), recon_id)
+def get_summary(recon_id: str, catalog: str | None = None):
+    md = svc.summary_md(_settings(catalog), recon_id)
     if md is None:
         raise HTTPException(status_code=404, detail="No summary available.")
     return md

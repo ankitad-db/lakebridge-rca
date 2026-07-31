@@ -1,6 +1,6 @@
 # One-Pager 1 — Current Project: The "As-Is" Blueprint
 
-**Asset:** RCA Genie-Code Skill for Migration Reconciliation (`rca-recon`)
+**Asset:** ReconResolve — Migration Reconciliation RCA (`rca-recon` Genie Code skill)
 **Status:** Working accelerator, validated on a realistic Snowflake→Databricks test bed
 **Owner:** _[team / DRI]_ · **Date:** _[date]_
 

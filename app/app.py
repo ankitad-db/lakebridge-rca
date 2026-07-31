@@ -1,4 +1,4 @@
-"""RCA Genie App — FastAPI entry point.
+"""ReconResolve App — FastAPI entry point.
 
 Serves a JSON API over the RCA engine and the built React frontend. The engine is
 vendored under ``app/rca_engine`` (kept in sync with the repo root via ``make sync``)
@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from server.routes.api import router as api_router  # noqa: E402
 
-app = FastAPI(title="RCA Genie — Post-Lakebridge Reconciliation RCA")
+app = FastAPI(title="ReconResolve — Post-Lakebridge Reconciliation RCA")
 app.include_router(api_router, prefix="/api")
 
 

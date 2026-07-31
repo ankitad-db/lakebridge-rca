@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from rca_engine.ingest import QueryRunner
-from rca_engine.models import Evidence, Finding, ReconType
+from rca_engine.models import Evidence, Finding, ReconType, TableSummary, Verdict
 
 
 @dataclass
@@ -110,3 +110,66 @@ def run_lineage(findings: list[Finding], runner: QueryRunner, lookback_days: int
                         f"upstream job/query for the filter/join that changed row volume.",
                     ))
     return findings
+
+
+def fetch_downstream(runner: QueryRunner, target_table: str, lookback_days: int = 90) -> list[str]:
+    """Tables that *consume* ``target_table`` (it is the source in table lineage) —
+    i.e. the blast radius of a defect landing in this table. Defensive: returns []
+    when the system tables are unavailable."""
+
+    try:
+        rows = runner.query(
+            "SELECT DISTINCT target_table_full_name AS tgt "
+            "FROM system.access.table_lineage "
+            f"WHERE lower(source_table_full_name) = lower('{target_table}') "
+            "AND target_table_full_name IS NOT NULL "
+            f"AND lower(target_table_full_name) <> lower('{target_table}') "
+            f"AND event_date >= current_date() - INTERVAL {int(lookback_days)} DAYS"
+        )
+        return sorted({str(r.get("tgt")) for r in rows if r.get("tgt")})
+    except Exception:
+        return []
+
+
+def run_blast_radius(
+    findings: list[Finding],
+    summaries: list[TableSummary],
+    runner: QueryRunner,
+    lookback_days: int = 90,
+) -> None:
+    """Record each affected table's downstream consumers so the report can prioritize
+    fixes by how far a defect propagates.
+
+    Only tables carrying an *actionable* finding (a migration-induced defect or a
+    needs-review) are probed — a benign/expected difference has no blast radius worth
+    escalating. The downstream list is stored on the matching ``TableSummary`` and, for
+    the worst finding on the table, added as an evidence line."""
+
+    actionable_tables = {
+        f.target_table
+        for f in findings
+        if f.top_hypothesis
+        and f.top_hypothesis.verdict in (Verdict.MIGRATION_INDUCED, Verdict.NEEDS_REVIEW)
+    }
+    summary_by_table = {s.target_table: s for s in summaries}
+
+    for table in actionable_tables:
+        downstream = fetch_downstream(runner, table, lookback_days=lookback_days)
+        if not downstream:
+            continue
+        s = summary_by_table.get(table)
+        if s is not None:
+            s.downstream_tables = downstream
+        # Attach the blast-radius note to the highest-mismatch finding on this table.
+        tbl_findings = [f for f in findings if f.target_table == table and f.top_hypothesis]
+        if tbl_findings:
+            worst = max(tbl_findings, key=lambda f: f.mismatch_count)
+            preview = ", ".join(f"`{t}`" for t in downstream[:5])
+            more = f" (+{len(downstream) - 5} more)" if len(downstream) > 5 else ""
+            worst.top_hypothesis.evidence.append(Evidence(
+                label="lineage",
+                detail=f"Blast radius: {len(downstream)} downstream table(s) consume this table "
+                f"({preview}{more}); a defect here propagates — prioritize the fix and "
+                f"re-validate consumers.",
+                data={"downstream_tables": downstream, "downstream_count": len(downstream)},
+            ))

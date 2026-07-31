@@ -131,7 +131,7 @@ export function OverviewPage() {
     return (
       <>
         <div className="crumbs">
-          <Link to="/">Recon runs</Link> / <span className="mono">{reconId}</span>
+          <Link to="/runs">Recon runs</Link> / <span className="mono">{reconId}</span>
         </div>
         <div className="topbar">
           <div>
@@ -163,7 +163,7 @@ export function OverviewPage() {
   return (
     <>
       <div className="crumbs">
-        <Link to="/">Recon runs</Link> / <span className="mono">{view.recon_id}</span>
+        <Link to="/runs">Recon runs</Link> / <span className="mono">{view.recon_id}</span>
       </div>
       <div className="topbar">
         <div>

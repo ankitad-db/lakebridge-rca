@@ -2,7 +2,7 @@
 warehouse and write Lakebridge-compatible ``main``/``metrics``/``details`` rows under
 a fresh ``recon_id``.
 
-This lets the RCA Genie app *trigger* a reconciliation itself (no Lakebridge CLI /
+This lets the ReconResolve app *trigger* a reconciliation itself (no Lakebridge CLI /
 Spark job needed) whenever both sides are query-able from the warehouse — the retail
 test bed keeps the simulated Snowflake source (``mig_source_sim``) and the migrated
 target (``mig_target``) in the same catalog, so a warehouse can join them directly.

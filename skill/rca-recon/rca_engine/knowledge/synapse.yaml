@@ -1,0 +1,100 @@
+dialect: synapse
+
+# Azure Synapse (T-SQL, dedicated SQL pool) -> Databricks type mapping guidance.
+# Synapse shares T-SQL semantics with SQL Server; a few distribution/DW-specific
+# gotchas are called out. `risk` flags mappings that commonly cause mismatches.
+type_mappings:
+  - source: DECIMAL(p,s) / NUMERIC(p,s)
+    databricks: DECIMAL(p,s)
+    risk: high
+    note: Mapping to DOUBLE/FLOAT loses precision and causes rounding drift. Preserve precision/scale.
+  - source: MONEY / SMALLMONEY
+    databricks: DECIMAL(19,4)
+    risk: high
+    note: Scaled integer (4 dp); mapping to DOUBLE rounds. Use DECIMAL(19,4).
+  - source: DATETIME
+    databricks: TIMESTAMP
+    risk: high
+    note: "DATETIME rounds to ~3.33 ms increments; use DATETIME2 for exact values."
+  - source: DATETIMEOFFSET
+    databricks: TIMESTAMP
+    risk: high
+    note: Carries a tz offset; Databricks TIMESTAMP is UTC. Convert deterministically or values shift.
+  - source: BIT
+    databricks: BOOLEAN
+    risk: medium
+    note: Stored as 0/1; map explicitly so values don't become strings.
+  - source: CHAR(n) / NCHAR(n) / VARCHAR / NVARCHAR
+    databricks: STRING
+    risk: high
+    note: "Default collation is typically case-insensitive and CHAR(n) is blank-padded; Spark STRING is case-sensitive and unpadded."
+  - source: UNIQUEIDENTIFIER
+    databricks: STRING
+    risk: medium
+    note: GUID casing/format can differ; normalize before comparing.
+  - source: FLOAT / REAL
+    databricks: DOUBLE
+    risk: medium
+    note: Aggregation ordering can produce tiny differences on doubles.
+
+# Functions / constructs whose semantics differ between Synapse T-SQL and Spark SQL.
+function_diffs:
+  - function: default CI collation comparison
+    category: string_format
+    note: Synapse string equality/joins are case-insensitive under a CI collation; Spark is case-sensitive, so joins and GROUP BY can bucket differently.
+  - function: hash/round-robin distribution + CTAS
+    category: volume_extra
+    note: Redistribution and CTAS reloads can duplicate or drop rows if the load isn't idempotent; verify counts after re-runs.
+  - function: GETDATE / SYSDATETIME
+    category: transpilation
+    note: Server-local vs UTC and DATETIME rounding; align tz and precision.
+  - function: ISNULL / COALESCE
+    category: null_boolean
+    note: ISNULL returns the first arg's type (can truncate); COALESCE uses type precedence.
+  - function: DATEADD / DATEDIFF / DATEPART
+    category: transpilation
+    note: Unit names, week-start (DATEFIRST) and boundary counting differ from Spark date functions.
+  - function: CONVERT / CAST with style
+    category: transpilation
+    note: T-SQL CONVERT style codes differ from Spark patterns; parsing/formatting can diverge.
+  - function: integer division ( / )
+    category: transpilation
+    note: int / int truncates; verify Spark casts and truncation match.
+  - function: TOP / OFFSET-FETCH
+    category: transpilation
+    note: Row-limiting without a deterministic ORDER BY can select different rows after translation.
+
+# Remediation templates keyed by RootCauseCategory value.
+remediation:
+  type_precision: >-
+    Re-map DECIMAL/NUMERIC(p,s) and MONEY to a Databricks DECIMAL(p,s) (MONEY -> DECIMAL(19,4)) that
+    preserves precision/scale instead of DOUBLE/FLOAT, then reload the affected column.
+  timezone: >-
+    Normalize timestamps explicitly (convert DATETIMEOFFSET / server-local GETDATE to UTC); prefer
+    DATETIME2 -> TIMESTAMP for exact values (DATETIME rounds to ~3.33 ms).
+  semi_structured: >-
+    Compare parsed JSON values rather than raw text; if semantically equal, treat as benign or
+    canonicalize (sorted keys) before reconciling.
+  string_format: >-
+    Account for the case-insensitive default collation and CHAR(n) blank-padding: TRIM and normalize
+    case in the transform (or align collation) so joins/aggregations match.
+  transpilation: >-
+    Fix the translated SQL to match T-SQL semantics (ISNULL vs COALESCE typing, DATEADD/DATEDIFF and
+    week-start, CONVERT style codes, integer division, TOP ordering), then re-run the transform.
+  volume_missing: >-
+    Investigate the load filter/watermark; back-fill filtered/late rows and make the incremental load
+    idempotent.
+  volume_extra: >-
+    Fix the fan-out join or add de-duplication, and make CTAS/redistribution reloads idempotent so
+    re-runs do not duplicate rows.
+  upstream_drift: >-
+    Not a migration defect. Align source/target snapshot times or route to the data owner; the
+    source data itself changed or was not populated.
+  null_boolean: >-
+    Map BIT (0/1) to BOOLEAN and resolve ISNULL/COALESCE null handling explicitly to Databricks NULL
+    semantics.
+  env_config: >-
+    Align session settings (timezone, DATEFIRST, collation, ANSI_NULLS) between the reconciliation
+    runs.
+  recon_config: >-
+    Review the reconcile configuration (join keys, transformations, tolerance thresholds).

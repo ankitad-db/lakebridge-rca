@@ -22,7 +22,7 @@ export function TablePage() {
   return (
     <>
       <div className="crumbs">
-        <Link to="/">Recon runs</Link> /{" "}
+        <Link to="/runs">Recon runs</Link> /{" "}
         <Link to={`/runs/${encodeURIComponent(view.recon_id)}`}>{view.recon_id}</Link> /{" "}
         <span className="mono">{table}</span>
       </div>

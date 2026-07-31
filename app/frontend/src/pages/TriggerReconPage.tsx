@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, getActiveCatalog } from "../api";
 import type { AppConfig, ReconJob, ReconPairResult } from "../types";
 
 interface Row {
@@ -175,7 +175,7 @@ export function TriggerReconPage({ config }: { config: AppConfig | null }) {
         <h3>1 · Schemas</h3>
         <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12 }}>Source schema (catalog {config?.recon_catalog})</span>
+            <span className="muted" style={{ fontSize: 12 }}>Source schema (catalog {getActiveCatalog() || config?.recon_catalog})</span>
             <input list="schemas" style={{ ...inputStyle, width: 240 }} value={srcSchema}
                    onChange={(e) => setSrcSchema(e.target.value)} placeholder="mig_source_sim" />
           </label>

@@ -6,8 +6,26 @@ recon_catalog: fevm_ps_dr_us_east_2_catalog
 recon_schema: reconcile
 
 # The ORIGINAL source EDW dialect, used to pick the semantic knowledge base
-# (type mappings, function differences, remediation). e.g. snowflake, oracle, mssql.
+# (type mappings, function differences, remediation). This RCA is NOT Snowflake-only:
+# it works for any Lakebridge-supported source. Knowledge bases ship for:
+#   snowflake, oracle, teradata, mssql (SQL Server), synapse
+# (add more as rca_engine/knowledge/<dialect>.yaml). Unknown dialects still run with
+# generic probes; they just get no dialect-specific remediation text.
 dialect: snowflake
+
+# Default schemas (within recon_catalog) for the reconcile step — used only when the
+# user asks the skill to reconcile tables (no recon_id yet). The RCA-only path (an
+# existing recon_id) ignores these. Reconcile compares source_schema vs target_schema
+# and writes a fresh recon_id into recon_catalog.recon_schema.
+source_schema: mig_source_sim
+target_schema: mig_target
+
+# Append-only audit trail. Each reconcile / RCA step logs one row (grouped by run_id)
+# so there's a durable record of what ran, when, by whom, and the outcome. Defaults to
+# <recon_catalog>.<recon_schema>.rca_genie_audit; set a fully-qualified name to relocate
+# or "off" to disable. The runner needs CREATE TABLE + MODIFY on the containing schema
+# (auto-created on first write; best-effort — auditing never blocks the RCA).
+audit_table: ""
 
 # Optional: SQL warehouse for local/CLI runs. Inside Genie Code the notebook's
 # spark session is used, so this is not required there.
@@ -72,3 +90,55 @@ combined_notebook: false
 # Requires lineage to have been captured for the target tables + query access; degrades
 # gracefully to nothing if unavailable. Off by default.
 use_uc_lineage: false
+
+# Distribution-drift quantification. For every column mismatch, measure the source-vs-
+# target null-rate, cardinality, and numeric summary (min/max/mean/stddev) and report
+# the shift — a stable distribution points to a migration/precision cause, a material
+# shift (null-rate jump / cardinality change) points to a genuine upstream data change.
+# One extra live query per column finding; on by default, set false to skip.
+distribution_drift: true
+
+# Downstream blast radius. For each AFFECTED target table (one with an actionable
+# finding), list the UC tables that consume it so a fix is prioritized by how far the
+# defect propagates. Reads system.access.table_lineage (same access as use_uc_lineage);
+# defaults to whatever use_uc_lineage is set to. Set true/false to force it independently.
+# blast_radius: false
+
+# Learning loop (memory). When on, the skill (a) loads priors from previously CONFIRMED
+# runs before analysis and proposes a matching recurring cause (which the drill-down then
+# confirms — never promoted on memory alone), and (b) after the run, records every
+# query-confirmed cause into an append-only Delta table keyed by a mechanism signature
+# (dialect + category + translated functions / scale delta). So the same mistranslation or
+# scale loss auto-classifies on the next migration. Needs CREATE TABLE + MODIFY on the
+# containing schema (best-effort; never blocks the RCA). Off by default.
+#   memory_table: defaults to <recon_catalog>.<recon_schema>.rca_genie_memory; set a
+#                 fully-qualified name to relocate, or "off" to disable.
+use_memory: false
+memory_table: ""
+
+# Suggested fixes. Attach a concrete, runnable remediation to each finding whose
+# category has one — the corrected transform expression (widen a cast, normalize a
+# timezone, align TRIM/case, explicit NULL/boolean mapping), a load statement
+# (back-fill missing rows, de-duplicate extras), or a recon-config normalization.
+# Deterministic and always a SUGGESTION (rendered as a review-then-run cell; never
+# auto-applied). On by default; set false to omit the fix cells.
+suggest_fixes: true
+
+# Fix-validation gate. When on, each suggested fix's validation query is executed to
+# check the reconciliation gap is *entirely* explained by the mechanism the fix corrects
+# (e.g. the whole diff is scale rounding / trim-case / a constant TZ offset / duplicate
+# keys / missing keys). Fixes that pass are marked "✅ validated"; the rest stay
+# unvalidated suggestions. Same evidence-first discipline as verdicts — nothing is
+# presented as trusted unless a query confirms it. On by default.
+validate_fixes: true
+
+# LLM synthesis layer (interactive Genie Code only). When on, after the deterministic
+# analyze() the agent (a) authors a GROUNDED plain-English "Analyst summary" — overall +
+# per table — from the concluded findings (rca_engine.synthesize.build_narrative_context
+# → set_narrative), and (b) proposes + executes adaptive drill-down queries for the
+# findings resolve.needs_query() flags (generic/residual), promoting a verdict ONLY when
+# the query confirms (resolve.resolve_finding). Verdicts stay deterministic + query-gated;
+# this only adds description and widens query coverage. Narrative is always labeled as LLM
+# synthesis, never presented as evidence. It's advisory: the interactive agent reads
+# SKILL.md; headless runs (no agent) simply skip it and render today's deterministic report.
+llm_synthesis: true

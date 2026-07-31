@@ -14,6 +14,11 @@ from rca_engine.models import (
     RootCauseCategory,
     Verdict,
 )
+from rca_engine.resolve import (
+    build_evidence_bundle,
+    resolve_finding,
+    unresolved_findings,
+)
 
 __all__ = [
     "Evidence",
@@ -24,6 +29,9 @@ __all__ = [
     "ReconType",
     "RootCauseCategory",
     "Verdict",
+    "build_evidence_bundle",
+    "resolve_finding",
+    "unresolved_findings",
 ]
 
 __version__ = "0.1.0"

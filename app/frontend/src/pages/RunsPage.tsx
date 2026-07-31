@@ -98,7 +98,6 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
                     ) : (
                       <span className="badge v-migration">⚠️ has diffs</span>
                     )}
-                    {r.has_bundle === false && <span className="pill" style={{ marginLeft: 8 }}>no bundle</span>}
                   </td>
                   <td className="num" onClick={(e) => e.stopPropagation()}>
                     <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

@@ -95,7 +95,7 @@ export function AnalyzePage() {
   return (
     <>
       <div className="crumbs">
-        <Link to="/">Recon runs</Link> / <span className="mono">{reconId}</span> / analyze
+        <Link to="/runs">Recon runs</Link> / <span className="mono">{reconId}</span> / analyze
       </div>
       <div className="topbar">
         <div>

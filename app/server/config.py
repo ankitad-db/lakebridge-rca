@@ -25,6 +25,13 @@ class Settings:
     notebook_dir: str = ""         # workspace folder to publish generated RCA notebooks into
     source_schema: str = ""        # default source schema for the trigger-recon form
     target_schema: str = ""        # default target schema for the trigger-recon form
+    audit_table: str = ""          # fully-qualified Delta table for the pipeline audit trail
+    llm_fallback: bool = False     # Tier-2: resolve residual findings via the Foundation Model API
+    llm_endpoint: str = ""         # FM serving endpoint used for the Tier-2 fallback
+    use_skill_job: bool = False    # invoke the Genie Code skill as a Databricks Job (vs in-process)
+    skill_notebook: str = ""       # workspace path of the deployed skill's job_entry notebook
+    skill_dir: str = ""            # workspace folder of the deployed skill (contains scripts/, config.yml)
+    skill_out_dir: str = ""        # workspace base the skill job writes rca_<id>/ bundles into
     profile: str = ""              # local CLI profile (ignored in-app)
     allow_ondemand: bool = False   # allow the app to run analyze() live (P2); off by default
 
@@ -32,21 +39,62 @@ class Settings:
     def has_warehouse(self) -> bool:
         return bool(self.warehouse_id)
 
+    def with_catalog(self, catalog: str) -> "Settings":
+        """A copy scoped to a different recon catalog (chosen in the UI). The audit
+        table follows the catalog unless ``RCA_AUDIT_TABLE`` pins an explicit location."""
+        import dataclasses
+
+        if not catalog or catalog == self.recon_catalog:
+            return self
+        new = dataclasses.replace(self, recon_catalog=catalog)
+        new.audit_table = _resolve_audit_table(catalog, self.recon_schema)
+        return new
+
+    def with_dialect(self, dialect: str) -> "Settings":
+        """A copy scoped to a different source dialect (chosen in the UI). The dialect
+        picks the knowledge base used for RCA classification + remediation."""
+        import dataclasses
+
+        if not dialect or dialect == self.dialect:
+            return self
+        return dataclasses.replace(self, dialect=dialect)
+
 
 def load_settings() -> Settings:
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    recon_catalog = os.environ.get("RCA_RECON_CATALOG", "")
+    recon_schema = os.environ.get("RCA_RECON_SCHEMA", "reconcile")
     return Settings(
         warehouse_id=os.environ.get("RCA_WAREHOUSE_ID", os.environ.get("DATABRICKS_WAREHOUSE_ID", "")),
-        recon_catalog=os.environ.get("RCA_RECON_CATALOG", ""),
-        recon_schema=os.environ.get("RCA_RECON_SCHEMA", "reconcile"),
+        recon_catalog=recon_catalog,
+        recon_schema=recon_schema,
         dialect=os.environ.get("RCA_DIALECT", "snowflake"),
         bundles_dir=os.environ.get("RCA_BUNDLES_DIR", os.path.join(here, "bundles")),
         notebook_dir=os.environ.get("RCA_NOTEBOOK_DIR", ""),
         source_schema=os.environ.get("RCA_SOURCE_SCHEMA", ""),
         target_schema=os.environ.get("RCA_TARGET_SCHEMA", ""),
+        audit_table=_resolve_audit_table(recon_catalog, recon_schema),
+        llm_fallback=os.environ.get("RCA_LLM_FALLBACK", "").lower() in ("1", "true", "yes"),
+        llm_endpoint=os.environ.get("RCA_LLM_ENDPOINT", "databricks-meta-llama-3-3-70b-instruct"),
+        use_skill_job=os.environ.get("RCA_USE_SKILL_JOB", "").lower() in ("1", "true", "yes"),
+        skill_notebook=os.environ.get("RCA_SKILL_NOTEBOOK", ""),
+        skill_dir=os.environ.get("RCA_SKILL_DIR", ""),
+        skill_out_dir=os.environ.get("RCA_SKILL_OUT_DIR", ""),
         profile=os.environ.get("DATABRICKS_PROFILE", ""),
         allow_ondemand=os.environ.get("RCA_ALLOW_ONDEMAND", "").lower() in ("1", "true", "yes"),
     )
+
+
+def _resolve_audit_table(recon_catalog: str, recon_schema: str) -> str:
+    """Fully-qualified audit table. ``RCA_AUDIT_TABLE`` overrides; ``off``/``none``
+    disables auditing; otherwise defaults to ``<catalog>.<recon_schema>.rca_genie_audit``
+    when a catalog is configured."""
+    override = os.environ.get("RCA_AUDIT_TABLE", "").strip()
+    if override.lower() in ("off", "none", "false", "disabled"):
+        return ""
+    if override:
+        return override
+    return f"{recon_catalog}.{recon_schema}.rca_genie_audit" if recon_catalog else ""
 
 
 def get_workspace_host() -> str:

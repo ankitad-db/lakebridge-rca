@@ -136,6 +136,85 @@ def build_matchrates(result: RcaResult) -> str:
     return "\n".join(lines)
 
 
+def _analyst_summary(text: str) -> str:
+    """Render an LLM-authored narrative, clearly labeled as synthesis (not evidence)
+    so a reader never mistakes description for a verdict-setting fact."""
+
+    body = "\n".join(f"> {ln}" if ln.strip() else ">" for ln in text.strip().splitlines())
+    return ("## 🧠 Analyst summary\n"
+            "_LLM synthesis, grounded in the evidence below — verdicts are set by the "
+            "deterministic engine and confirmed by executed queries._\n\n" + body)
+
+
+def build_systemic_causes(result: RcaResult) -> str:
+    """Lead with the few systemic causes that each explain many findings, so the
+    reader fixes one thing and clears N. Built from ``result.clusters``."""
+
+    if not result.clusters:
+        return ""
+    lines = ["## 🧨 Systemic root causes _(fix one, resolve many)_", "",
+             "Each row groups findings that share a single mechanism — a mistranslated "
+             "expression, a transpile warning, or one category concentrated in a table. "
+             "Start here: they clear the most findings per fix.", "",
+             "| Fix this | Verdict | Category | Findings | Rows | Impacted locations |",
+             "| :-- | :-- | :-- | --: | --: | :-- |"]
+    for c in result.clusters:
+        sym = _VERDICT.get(c.verdict, ("•",))[0]
+        locs = ", ".join(f"`{m}`" for m in c.members[:6])
+        if len(c.members) > 6:
+            locs += f" _(+{len(c.members) - 6} more)_"
+        lines.append(
+            f"| {c.signature} | {sym} | {_cat_label(c.category)} | {c.finding_count} | "
+            f"{c.rows_impacted:,} | {locs} |"
+        )
+    return "\n".join(lines)
+
+
+def build_blast_radius(result: RcaResult) -> str:
+    """Downstream consumers of the *affected* tables, so a fix can be prioritized by
+    how far a defect propagates. Built from ``TableSummary.downstream_tables`` (set by
+    the lineage blast-radius pass); empty when UC lineage wasn't run/available."""
+
+    rows = []
+    actionable = {f.target_table for f in result.findings
+                  if f.top_hypothesis and f.top_hypothesis.verdict != Verdict.BENIGN}
+    for s in sorted(result.table_summaries, key=lambda x: len(x.downstream_tables), reverse=True):
+        if not s.downstream_tables or s.target_table not in actionable:
+            continue
+        name = s.target_table.split(".")[-1]
+        preview = ", ".join(f"`{t.split('.')[-1]}`" for t in s.downstream_tables[:6])
+        if len(s.downstream_tables) > 6:
+            preview += f" _(+{len(s.downstream_tables) - 6} more)_"
+        rows.append(f"| `{name}` | {len(s.downstream_tables)} | {preview} |")
+    if not rows:
+        return ""
+    return "\n".join(["## 💥 Downstream blast radius", "",
+                      "Affected tables (with an actionable finding) and the tables that consume them. "
+                      "A defect here propagates downstream — fix and re-validate consumers first.", "",
+                      "| Affected table | Downstream consumers | Tables |",
+                      "| :-- | --: | :-- |", *rows])
+
+
+def build_fixes(result: RcaResult) -> str:
+    """A compact roll-up of the concrete suggested fixes across the run, so a reader
+    can see the actionable to-do list before diving into per-finding cells."""
+
+    rows = []
+    for f in sorted(result.findings, key=severity_score, reverse=True):
+        h = f.top_hypothesis
+        if h and h.fix:
+            check = "✅" if h.fix.validated else "·"
+            rows.append(f"| `{_loc(f)}` | {h.fix.title} | {h.fix.target} | {check} | {h.fix.confidence:.0%} |")
+    if not rows:
+        return ""
+    return "\n".join(["## 🛠️ Suggested fixes", "",
+                      "Concrete, runnable remediations (review before running — each is shown as a "
+                      "fix cell under its finding). **✅** in _Valid._ means a query confirmed the "
+                      "fix closes the gap; blank means it's a suggestion to review.", "",
+                      "| Location | Fix | Target | Valid. | Conf. |",
+                      "| :-- | :-- | :-- | :--: | --: |", *rows])
+
+
 def build_tldr(result: RcaResult) -> str:
     counts = result.verdict_counts()
     n_tables = len({f.target_table for f in result.findings})
@@ -152,6 +231,12 @@ def build_tldr(result: RcaResult) -> str:
         sym, label, action = _VERDICT[v]
         lines.append(f"| {sym} {label} | {counts.get(v.value, 0)} | {action} |")
     lines.append("")
+    if result.narrative:
+        lines += [_analyst_summary(result.narrative), ""]
+    sc = build_systemic_causes(result)
+    if sc:
+        lines.append(sc)
+        lines.append("")
     tp = build_top_priorities(result)
     if tp:
         lines.append(tp)
@@ -161,6 +246,14 @@ def build_tldr(result: RcaResult) -> str:
     mr = build_matchrates(result)
     if mr:
         lines.append(mr)
+        lines.append("")
+    br = build_blast_radius(result)
+    if br:
+        lines.append(br)
+        lines.append("")
+    fx = build_fixes(result)
+    if fx:
+        lines.append(fx)
         lines.append("")
 
     by_verdict: dict[Verdict, list[Finding]] = {v: [] for v in _VERDICT_ORDER}
@@ -302,8 +395,14 @@ def _provenance(h) -> str:
         used.append("🧬 source types")
     if any(lbl == "transpile" for lbl, _ in details):
         used.append("📄 transpile report")
+    if any(lbl == "drift" for lbl, _ in details):
+        used.append("📉 distribution")
     if any(lbl == "lineage" for lbl, _ in details):
         used.append("🔗 UC lineage")
+    if any(lbl == "llm_drilldown" for lbl, _ in details):
+        used.append("🧠 LLM synthesis")
+    if any(lbl == "memory" for lbl, _ in details):
+        used.append("📚 learned prior")
     return " · ".join(used)
 
 
@@ -320,8 +419,16 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
         ]
         if h.remediation:
             header.append(f"- **Fix**: {h.remediation.strip()}")
+        if h.fix:
+            badge = "✅ validated" if h.fix.validated else "suggested"
+            header.append(f"- **🛠️ Suggested fix ({badge})**: {h.fix.title} "
+                          f"_(target: {h.fix.target} · {h.fix.confidence:.0%})_ — see the fix cell below.")
+            if h.fix.validation:
+                header.append(f"  - _{h.fix.validation}_")
         _ev_label = {"drilldown": "Evidence (query)", "code": "Evidence (code)",
-                     "transpile": "Transpile report", "lineage": "Evidence (lineage)"}
+                     "transpile": "Transpile report", "lineage": "Evidence (lineage)",
+                     "drift": "Distribution drift", "llm_drilldown": "Evidence (LLM query)",
+                     "memory": "Learned prior"}
         for e in h.evidence:
             if e.label in _ev_label:
                 header.append(f"- **{_ev_label[e.label]}**: {e.detail}")
@@ -337,16 +444,33 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
     if samples:
         header += ["", "Sample differences:", *samples]
 
-    # Pre-fill the confirming query so the reader can re-run it live.
+    # Pre-fill the confirming query so the reader can re-run it live. Prefer the
+    # deterministic drill-down; fall back to an agent-generated (llm_drilldown) query
+    # when that's what confirmed the finding.
     query = ""
-    if h and h.evidence and h.evidence[0].label == "drilldown" and h.evidence[0].query:
-        query = h.evidence[0].query
+    for e in (h.evidence if h else []):
+        if e.label in ("drilldown", "llm_drilldown") and e.query:
+            query = e.query
+            break
     live = _code_cell(
         f"# Re-run to confirm / drill deeper for {_loc(f)}\n"
         + (f'spark.sql("""{query}""").display()' if query
            else f'# spark.sql("SELECT * FROM {f.target_table} LIMIT 20").display()')
     )
-    return [_md_cell("\n".join(x for x in header if x is not None)), live]
+    cells = [_md_cell("\n".join(x for x in header if x is not None)), live]
+
+    # Suggested fix as a review-then-run cell (never auto-applied).
+    if h and h.fix:
+        status = "VALIDATED by query" if h.fix.validated else "SUGGESTED — not validated"
+        val = f"# {h.fix.validation}\n" if h.fix.validation else ""
+        cells.append(_code_cell(
+            f"# 🛠️ Suggested fix for {_loc(f)} — {h.fix.title}\n"
+            f"# Status: {status}. Review before running. target={h.fix.target}, kind={h.fix.kind}\n"
+            f"{val}"
+            f'fix_sql = """\\\n{h.fix.sql}\n"""\n'
+            f"print(fix_sql)  # inspect, then run manually: spark.sql(fix_sql)"
+        ))
+    return cells
 
 
 # Order findings within a table the way Lakebridge reports them.
@@ -452,12 +576,15 @@ def build_notebook(result: RcaResult) -> dict[str, Any]:
     by_table: dict[str, list[Finding]] = {}
     for f in result.findings:
         by_table.setdefault(f.target_table, []).append(f)
+    narrative_by_table = {s.target_table: s.narrative for s in result.table_summaries if s.narrative}
 
     for table in sorted(by_table):
         fs = sorted(by_table[table],
                     key=lambda x: (_RECON_ORDER.get(x.recon_type, 9),
                                    -(x.top_hypothesis.confidence if x.top_hypothesis else 0)))
         cells.append(_md_cell(f"## 📦 `{table}`  \n_{_verdict_badges(fs)}  ·  {len(fs)} finding(s)_"))
+        if narrative_by_table.get(table):
+            cells.append(_md_cell(_analyst_summary(narrative_by_table[table])))
         for f in fs:
             cells.extend(_finding_section(f))
     cells.append(_md_cell("---\n" + build_conclusion(result)))
@@ -485,12 +612,17 @@ def _target_tables(result: RcaResult) -> list[str]:
 
 
 def _subresult(result: RcaResult, target_table: str) -> RcaResult:
-    """A single-table view of the run, reusing the same report machinery."""
+    """A single-table view of the run, reusing the same report machinery. Clusters are
+    recomputed from the table's own findings so the systemic-causes section stays scoped."""
+    from rca_engine.cluster import build_clusters
+
+    sub_findings = [f for f in result.findings if f.target_table == target_table]
     return RcaResult(
         recon_id=result.recon_id,
         dialect=result.dialect,
-        findings=[f for f in result.findings if f.target_table == target_table],
+        findings=sub_findings,
         table_summaries=[s for s in result.table_summaries if s.target_table == target_table],
+        clusters=build_clusters(sub_findings),
     )
 
 
