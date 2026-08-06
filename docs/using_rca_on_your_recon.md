@@ -76,6 +76,15 @@ This is the only real "setup" — tell it where your data lives. Edit
 
 Leave everything else at defaults for a first run.
 
+**Optional — deep upstream trace-back.** If your target is fed by a multi-layer pipeline
+(`raw → … → staging/transform → target`) and you want RCA to point at the *layer where a
+difference entered* rather than just the reconciled table, set `use_uc_lineage: true` (CLI:
+`--use-lineage`). ReconResolve then walks Unity Catalog lineage **hop by hop to the root
+layer** — any depth, cycle-safe — and adds a `Lineage trace-back (N hops to root …)` line to
+each finding. `max_lineage_hops` (default 10) caps the walk depth. Requires `SELECT` on
+`system.access.*_lineage` and captured lineage for the tables on the path; it degrades to
+nothing if unavailable.
+
 ---
 
 ## 5A. Run it — Genie Code skill (recommended)
@@ -112,7 +121,7 @@ python -m rca_engine.cli \
   --output-dir rca_out
 # optional code-aware inputs:
 #   --recon-config <path> --transpiled-output <dir> --source-scripts <dir> \
-#   --transpile-errors <file> --use-lineage --combined-notebook
+#   --transpile-errors <file> --use-lineage --max-lineage-hops 10 --combined-notebook
 ```
 
 ---

@@ -98,7 +98,7 @@ Notes: The differentiator is deterministic, evidence-backed verdicts — Genie C
 - **Starts where Lakebridge Reconcile stops** — picks up a `recon_id` (or triggers the reconcile itself, auto-detecting join keys)
 - **Ingests** recon `details` → runs **deterministic typed probes** per mismatch (numeric · timezone · null/boolean · string · volume · semi-structured)
 - **Confirms** each cause with a **live query** + a per-dialect knowledge base (Snowflake, Oracle, Teradata, SQL Server, Synapse)
-- **Genie Code fallback** traces the leftovers back through the **transpiled SQL + UC lineage** to pinpoint the cause — and still proves it with a query
+- **Traces the cause upstream** — walks UC lineage **hop by hop to the root layer** (any pipeline depth) + the transpiled SQL, so a defect in an intermediate transform is pinpointed, not blamed on the target; Genie Code continues the walk where lineage is missing — and still proves it with a query
 - **Publishes** verdict + fix + owner + a runnable RCA notebook — via one **Genie Code skill**
 
 **◻ Productivity impact** *(right card — dark surface, amber hero metric)*
@@ -170,7 +170,7 @@ Diagram (three layers, top to bottom):
 
 - **Surfaces (2):** **Genie Code skill** (`SKILL.md` + `scripts/run_rca.py`, runs in a Databricks notebook) · **Databricks App** (FastAPI + React, service-principal auth, live URL).
 - **Shared engine (`rca_engine`, pure Python behind a `QueryRunner` protocol):**
-  `discovery` · `ingest` · `probes` · `classify` (+ `knowledge/*.yaml`, `codecorr`/sqlglot, UC lineage) · `reconcile` (app-native) · `report` (notebooks + SUMMARY) · `audit`.
+  `discovery` · `ingest` · `probes` · `classify` (+ `knowledge/*.yaml`, `codecorr`/sqlglot, UC lineage with depth-agnostic upstream trace-back) · `reconcile` (app-native) · `report` (notebooks + SUMMARY) · `audit`.
 - **Data plane (Unity Catalog):** source & target tables · `reconcile.main/metrics/details` · `rca_genie_audit` (Delta) · published notebooks in `/Workspace`.
 
 - **Backend-agnostic:** same engine runs on a notebook **Spark** session or the **SQL Statement Execution API** (in-app), so no rewrite between surfaces.

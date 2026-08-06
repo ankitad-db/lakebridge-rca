@@ -23,7 +23,9 @@ inside Databricks Genie Code from a single `recon_id`.
   - **Classifier** — maps signals → **category** (12) + **verdict** (4) + confidence.
   - **Code-aware correlation** — parses Lakebridge transpile output, recon config, and source DDL
     (via `sqlglot`) to confirm the cause from the actual translated code, not just the data.
-  - **UC lineage (optional)** — column/table lineage as an independent provenance source.
+  - **UC lineage (optional)** — column/table lineage as an independent provenance source,
+    with a **depth-agnostic upstream trace-back** that walks lineage hop by hop to the root
+    layer so a defect in an intermediate transform layer is pinpointed, not blamed on the target.
   - **Live drill-down** — executes a confirmation query per finding against the real
     source/target tables and finalizes the verdict/confidence.
   - **Report** — TL;DR, Lakebridge-aligned per-table overview, row & column match rates,

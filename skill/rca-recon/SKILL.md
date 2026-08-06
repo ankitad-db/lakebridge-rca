@@ -73,7 +73,12 @@ Every step is recorded in an audit table (see "Audit trail").
   - `use_uc_lineage: true` — attach **Unity Catalog lineage** evidence
     (`system.access.column_lineage`/`table_lineage`): confirms a column's true upstream
     provenance and the upstream tables feeding a target (helps locate where a
-    volume/drift cause entered). Degrades to nothing if lineage isn't captured.
+    volume/drift cause entered). Also performs a **depth-agnostic trace-back**: it walks
+    lineage hop by hop (column lineage where a column is known, table lineage otherwise)
+    to the root layer, so a defect that entered several layers upstream (e.g. an
+    intermediate staging/transform table) is pointed at directly — not just the
+    reconciled target. `max_lineage_hops` (default 10) bounds the walk depth; it stops
+    early at the roots. Degrades to nothing if lineage isn't captured.
   - `use_memory: true` — **learning loop**. Before analysis, load priors from previously
     **confirmed** runs (a Delta memory table keyed by a mechanism signature = dialect +
     category + translated functions / scale delta) and propose a matching recurring cause
@@ -292,8 +297,10 @@ for f in unresolved_findings(result):          # only NEEDS_REVIEW / UNKNOWN fin
     # bundle = { source/target tables, column, sampled value pairs, declared
     #            source_type, transpiled target_derivation, transpile_issues,
     #            prior_evidence (code/transpile/recon_config/lineage/drilldown already
-    #            gathered), and lineage {upstream_tables, column_upstreams} — so you can
-    #            trace the mismatch back through the transpiled code and its upstreams. }
+    #            gathered), and lineage {upstream_tables, column_upstreams, trace_back:
+    #            {paths, roots, max_depth}} — a full hop-by-hop chain to the root layer,
+    #            so you can walk PAST the first hop and issue a confirming query at
+    #            whichever upstream layer the difference actually entered. }
     #
     # ↳ YOU reason over `bundle`: form the most likely root-cause category and a
     #   confirming query. The query MUST return a boolean `confirmed` column (and

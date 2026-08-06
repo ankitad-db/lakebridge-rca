@@ -189,6 +189,8 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
         runner, recon_id, cfg["recon_catalog"], cfg["recon_schema"],
         dialect=cfg.get("dialect", "snowflake"), drilldown=True, mapping=mapping,
         use_lineage=use_lineage,
+        # Depth of the upstream lineage trace-back (walks to the root layer).
+        max_lineage_hops=int(cfg.get("max_lineage_hops", 10)),
         only_table=only_table,
         # Quantify each column's source-vs-target distribution shift (on by default).
         drift=bool(cfg.get("distribution_drift", True)),

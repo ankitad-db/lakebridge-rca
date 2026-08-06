@@ -112,7 +112,9 @@ def build_evidence_bundle(
     source type, the transpiled target derivation, transpile warnings, any evidence
     the deterministic passes already gathered (code / transpile / recon_config /
     lineage / drill-down), and — for a true trace-back — Unity Catalog lineage:
-    the target column's upstream column(s) and the upstream tables feeding it.
+    the target column's immediate upstream(s) *and* a depth-agnostic ``trace_back``
+    chain walked hop by hop to the root layer, so the model can locate and confirm a
+    defect that entered several layers upstream.
 
     ``runner`` is optional: pass it to fetch UC lineage live (from
     ``system.access.*_lineage``). Lineage already attached by an earlier
@@ -182,7 +184,7 @@ def build_evidence_bundle(
         lineage["notes"] = attached
     if runner is not None:
         try:
-            from rca_engine.lineage import fetch_lineage
+            from rca_engine.lineage import fetch_lineage, trace_upstream
 
             info = fetch_lineage(runner, finding.target_table, lookback_days=lookback_days)
             if info.upstream_tables:
@@ -191,6 +193,21 @@ def build_evidence_bundle(
                 ups = info.column_upstreams.get(finding.column.lower())
                 if ups:
                     lineage["column_upstreams"] = ups
+            # Full depth-agnostic trace-back so the model can walk past the first hop and
+            # issue a confirming query at whichever upstream layer the difference entered.
+            chain = trace_upstream(
+                runner, finding.target_table, finding.column or None, lookback_days=lookback_days
+            )
+            if chain.max_depth >= 2:
+                lineage["trace_back"] = {
+                    "paths": [
+                        [{"table": n.table, "column": n.column} for n in p]
+                        for p in chain.paths
+                    ],
+                    "roots": chain.root_tables(),
+                    "max_depth": chain.max_depth,
+                    "truncated": chain.truncated,
+                }
         except Exception:  # best-effort; lineage is optional
             pass
     if lineage:

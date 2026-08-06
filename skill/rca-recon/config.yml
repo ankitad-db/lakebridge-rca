@@ -89,7 +89,16 @@ combined_notebook: false
 # upstream tables feeding a target (helps locate where a volume/drift cause entered).
 # Requires lineage to have been captured for the target tables + query access; degrades
 # gracefully to nothing if unavailable. Off by default.
+#
+# When on, each finding also gets a DEPTH-AGNOSTIC upstream trace-back: lineage is walked
+# hop by hop (column lineage where a column is known, table lineage otherwise) to the root
+# layer, so a defect that entered several layers upstream (e.g. an intermediate staging /
+# transform table) is pointed at directly — not just the reconciled target.
 use_uc_lineage: false
+
+# Max depth of the lineage trace-back walk (safety budget against very deep / cyclic
+# graphs). Increase for deeper pipelines; the walk stops early at the roots anyway.
+max_lineage_hops: 10
 
 # Distribution-drift quantification. For every column mismatch, measure the source-vs-
 # target null-rate, cardinality, and numeric summary (min/max/mean/stddev) and report

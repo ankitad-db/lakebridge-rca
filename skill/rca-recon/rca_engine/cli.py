@@ -56,7 +56,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--table-manifest", default=None,
                         help="YAML/JSON with an explicit per-table source/target script mapping.")
     parser.add_argument("--use-lineage", action="store_true",
-                        help="Attach UC lineage evidence (system.access.*_lineage) when available.")
+                        help="Attach UC lineage evidence (system.access.*_lineage) when available, "
+                             "including a depth-agnostic upstream trace-back to the root layer.")
+    parser.add_argument("--max-lineage-hops", type=int, default=10,
+                        help="Safety budget for the upstream lineage trace-back depth (default 10).")
     parser.add_argument("--combined-notebook", action="store_true",
                         help="Also write a single-scroll combined notebook (rca_<id>_all.ipynb) "
                              "alongside the per-table notebooks.")
@@ -92,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     result = analyze(
         runner, args.recon_id, args.recon_catalog, args.recon_schema,
         dialect=args.dialect, drilldown=not args.no_drilldown, mapping=mapping,
-        use_lineage=args.use_lineage,
+        use_lineage=args.use_lineage, max_lineage_hops=args.max_lineage_hops,
     )
 
     os.makedirs(args.output_dir, exist_ok=True)

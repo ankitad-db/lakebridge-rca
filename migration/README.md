@@ -16,6 +16,7 @@ All objects live in the existing catalog `fevm_ps_dr_us_east_2_catalog`
 |--------|------|
 | `mig_source_sim` | Simulated Snowflake source (source of truth) |
 | `mig_target` | Migrated Databricks target (dims, facts, gold) |
+| `mig_multilayer` | Multi-layer lineage bed (raw → stg → curated → gold) for the trace-back |
 | `reconcile` | Lakebridge reconcile metadata + output tables |
 
 ## Layout
@@ -35,7 +36,15 @@ migration/
   scenarios.md / scenarios.yaml         # ground-truth manifest / machine-readable oracle
   edge_cases/                           # comprehensive edge-case source + target tables
   pilot/                                # authentic pilot migration scripts (see below)
+  multilayer/                           # multi-layer lineage bed for the depth-agnostic trace-back
 ```
+
+## Multi-layer lineage bed (`multilayer/`)
+
+A separate medallion pipeline (`raw → stg → curated → gold`) where a defect is injected in an
+**intermediate** layer and the reconciled target's immediate parent is clean — so the RCA must
+walk lineage **past the first hop** to find the cause. Backs **section L** of the test plan and
+the depth-agnostic trace-back. See [`multilayer/README.md`](multilayer/README.md).
 
 ## Pilot migration scripts (`pilot/`)
 

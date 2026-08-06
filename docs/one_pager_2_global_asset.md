@@ -47,8 +47,8 @@ input a **swappable plug**:
   add a YAML pack, no engine change.
 - **Reusable conformance suite** — `scenarios.yaml` + the test-bed generator become a template each
   team clones to prove the accelerator on their own tables before a customer run.
-- **Extensible evidence** — new sources (additional lineage, DQ tools, catalog metadata) attach as
-  labeled evidence without changing verdict logic.
+- **Extensible evidence** — new sources (deeper multi-hop lineage trace-back, DQ tools, catalog
+  metadata) attach as labeled evidence without changing verdict logic.
 
 ## 5. Packaging & distribution
 - **Versioned skill** published to a shared skills catalog / internal marketplace (semver).

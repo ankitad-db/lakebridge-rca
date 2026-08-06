@@ -19,6 +19,7 @@ databricks labs lakebridge reconcile -p ps-dr-east
 | [`31_reconcile_config_advanced.json`](31_reconcile_config_advanced.json) | **Feature demo / RCA stress test.** Exercises most reconcile customizations so we can verify the RCA correctly *reads and reasons about* a real-world, tuned config. |
 | [`32_reconcile_config_edge.json`](32_reconcile_config_edge.json) | **Edge-only run.** The 9 edge tables (`edge_numeric`, `edge_events`, `edge_string`, `dim_supplier`, `dim_config`, `fact_inventory`, `dim_flag`, `fact_payments`, `agg_weekly_sales`) that reconcile cleanly with plain configs. Excludes `edge_geo` (see caveat below). |
 | [`33_reconcile_config_full.json`](33_reconcile_config_full.json) | **Everything in one run.** All 16 pairs (6 pilot + 10 edge), with `edge_geo` handled via `column_mapping` so reconcile does not abort. Recommended for a single comprehensive `recon_id`. |
+| [`34_reconcile_config_multilayer.json`](34_reconcile_config_multilayer.json) | **Multi-layer lineage bed.** One pair (`sales_src` → `sales_gold`) in schema `mig_multilayer`; the defect lives 2 layers upstream so it exercises the **depth-agnostic trace-back**. Deploy [`../multilayer/50_multilayer_pipeline.sql`](../multilayer/50_multilayer_pipeline.sql) first; source & target schema are both `mig_multilayer`. See [`../multilayer/README.md`](../multilayer/README.md). |
 
 ## ⚠️ Caveat: renamed columns abort `report_type: all`
 

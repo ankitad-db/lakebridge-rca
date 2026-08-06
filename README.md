@@ -79,7 +79,7 @@ flowchart TB
     %% ---------- 4. Enrichment ----------
     subgraph ENR["④ Enrichment — live and defensive"]
         DR["run_drift()<br/>distribution shift"]
-        LIN["run_lineage() + run_blast_radius()<br/>system.access lineage"]
+        LIN["run_lineage() + run_blast_radius()<br/>system.access lineage<br/>+ depth-agnostic upstream trace-back"]
         FIX["generate_fixes()<br/>runnable remediation"]
         VF["validate_all_fixes()<br/>fix-validation gate → ✅ validated"]
         CLU["build_clusters()<br/>one mechanism → many findings"]
@@ -139,6 +139,20 @@ Every finding gets a verdict, separate from its technical category:
 Each finding is cross-confirmed by up to **five independent sources**: recon data · target
 code · declared source types · Unity Catalog lineage · a live confirming query.
 
+### Upstream trace-back (depth-agnostic)
+
+When Unity Catalog lineage is enabled (`use_uc_lineage: true`), ReconResolve doesn't stop at
+the reconciled table. It **walks lineage upstream hop by hop to the root layer** — following
+*column* lineage where a column is known, *table* lineage otherwise — so a defect introduced
+several layers back (e.g. a bad `ROUND`/`CAST`/join in an intermediate staging or transform
+table) is pointed at directly rather than blamed on the target. The walk is **not fixed to any
+number of layers**: it follows the real pipeline depth, is cycle-safe, and is bounded only by
+`max_lineage_hops` (default 10) as a safety budget. Each finding gets a
+`Lineage trace-back (N hops to root …)` evidence line with the full path. Where lineage is
+missing or broken, the Tier-2 LLM continues the walk by proposing and executing confirming
+queries at each upstream layer — so the verdict stays query-backed at whatever layer the
+difference actually entered.
+
 ## Suggested fixes (and the validation gate)
 
 For each finding ReconResolve attaches a **concrete, runnable fix** — a corrected transform
@@ -164,7 +178,7 @@ rca_engine/            # source-agnostic diagnostics package — the engine
   memory.py            #   learning loop — confirmed causes become gated priors
   drilldown.py         #   live confirmation queries → finalize verdicts
   drift.py             #   distribution-shift quantification
-  lineage.py           #   Unity Catalog lineage + downstream blast radius
+  lineage.py           #   UC lineage: depth-agnostic upstream trace-back + downstream blast radius
   fixgen.py            #   runnable suggested fixes + fix-validation gate
   cluster.py           #   group findings that share one systemic root cause
   resolve.py           #   Tier-2 LLM fallback + gated LLM fix proposal
@@ -241,7 +255,7 @@ python -m rca_engine.cli \
   --output-dir rca_out
 # optional code-aware inputs:
 #   --recon-config <path> --transpiled-output <dir> --source-scripts <dir> \
-#   --transpile-errors <file> --use-lineage --combined-notebook
+#   --transpile-errors <file> --use-lineage --max-lineage-hops 10 --combined-notebook
 ```
 
 Produces a self-contained `rca_out/rca_<recon_id>/` folder: `00_index.ipynb`
@@ -305,7 +319,8 @@ To exercise the full pipeline on the bundled Snowflake→Databricks test bed:
 | `source_scripts_dir` | original-dialect DDL — declared source types |
 | `transpile_error_file` | transpile error report |
 | `tables:` | explicit per-table source/target script manifest (overrides folder scans) |
-| `use_uc_lineage` | attach Unity Catalog lineage evidence (default: false) |
+| `use_uc_lineage` | attach UC lineage evidence + walk a depth-agnostic upstream trace-back to the root layer (default: false) |
+| `max_lineage_hops` | safety budget for the trace-back walk depth (default: 10; stops early at the roots) |
 | `suggest_fixes` / `validate_fixes` | attach runnable fixes / run the fix-validation gate (default: on) |
 | `use_memory` / `memory_table` | learning loop — reuse confirmed causes as gated priors |
 

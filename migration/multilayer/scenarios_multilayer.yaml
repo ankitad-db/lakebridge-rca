@@ -1,0 +1,38 @@
+# Ground-truth oracle for the MULTI-LAYER lineage test bed.
+#
+# Kept separate from migration/scenarios.yaml because it lives in its own recon run
+# (source sales_src -> target sales_gold, schema mig_multilayer) and exercises the
+# depth-agnostic upstream trace-back — not the single-hop source->target beds.
+#
+# Validate with:
+#   python scripts/validate_scenarios.py --recon-id <multilayer_recon_id> \
+#     --warehouse-id <wid> --recon-schema reconcile \
+#     --scenarios migration/multilayer/scenarios_multilayer.yaml --use-lineage
+#
+# Fields mirror migration/scenarios.yaml, plus:
+#   trace_root   the root table the lineage walk should reach
+#   trace_hops   expected hop count from target to root
+#   defect_layer the layer where the difference was actually injected
+
+scenarios:
+  - id: ML1
+    table: sales_gold
+    column: amount
+    recon_type: column_mismatch
+    category: transpilation
+    verdict: migration_induced
+    deployed: true
+    example: {source: "1.6200", target: "2.0000"}
+    trace_root: sales_raw
+    trace_hops: 3
+    defect_layer: sales_stg
+    mechanism: >
+      amount rounded to whole units in the intermediate staging layer (sales_stg:
+      round(amount,0)) and passed through curated -> gold unchanged. The mismatch
+      surfaces on the reconciled target sales_gold, but the defect is 2 hops upstream;
+      the trace-back walks gold <- curated <- stg <- raw and points at sales_stg.
+
+# Note: `qty` is an untouched passthrough through every layer and must produce NO
+# finding — proving the trace-back only fires on the genuinely mismatched column. It is
+# not listed as a scenario here because the harness's clean check is table-level and
+# sales_gold legitimately has the ML1 (amount) finding; verify qty-clean by eye.

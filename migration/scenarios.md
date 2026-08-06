@@ -40,6 +40,19 @@ exercise the remaining categories and edge variants for production-grade testing
 | E12 | `edge_string.name_unicode` | string_format | Migration-induced | Unicode NFC vs NFD (normalize on load) |
 | C1 | `dim_store` | — | — (clean) | 1:1 copy; must produce **zero** findings |
 
+## Multi-layer lineage bed
+
+A separate bed (`multilayer/`, schema `mig_multilayer`) exercises the **depth-agnostic
+upstream trace-back**: a defect is injected in an intermediate layer (`raw → stg → curated →
+gold`) and passed through to the reconciled target, so the RCA must walk lineage past the
+first hop to locate it. Its oracle is
+[`multilayer/scenarios_multilayer.yaml`](multilayer/scenarios_multilayer.yaml); see
+[`multilayer/README.md`](multilayer/README.md).
+
+| ID | Table.Column | Category | Expected verdict | Trace-back |
+|----|--------------|----------|------------------|-----------|
+| ML1 | `sales_gold.amount` | transpilation | Migration-induced | 3 hops to root `sales_raw`; defect at `sales_stg` |
+
 ## Testing
 
 - **`scenarios.yaml`** — machine-readable oracle (the source of truth for both harnesses below).

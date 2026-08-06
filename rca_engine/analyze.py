@@ -36,6 +36,7 @@ def analyze(
     drilldown: bool = True,
     mapping: dict | None = None,
     use_lineage: bool = False,
+    max_lineage_hops: int = 10,
     only_table: str | None = None,
     drift: bool = True,
     blast_radius: bool | None = None,
@@ -55,6 +56,10 @@ def analyze(
     - ``blast_radius`` records the downstream tables that consume each *affected*
       target, so a fix can be prioritized by how far the defect propagates. Defaults
       to ``use_lineage`` (both read the UC ``system.access`` tables).
+    - when ``use_lineage`` is on, each finding also gets a **depth-agnostic upstream
+      trace-back**: lineage is walked hop by hop (column lineage where a column is known,
+      table lineage otherwise) to the root layer, so a defect that entered several layers
+      upstream is pointed at directly. ``max_lineage_hops`` bounds the walk depth.
     - findings are then grouped into systemic ``clusters`` (one shared mechanism →
       many findings) so the report can lead with the single fix that clears the most.
     - ``fixes`` attaches a concrete, runnable suggested fix (corrected SQL / recon-config
@@ -87,7 +92,7 @@ def analyze(
         findings = run_drift(findings, runner, scope)
     if use_lineage:
         from rca_engine.lineage import run_lineage
-        findings = run_lineage(findings, runner)
+        findings = run_lineage(findings, runner, max_hops=max_lineage_hops)
     if blast_radius is None:
         blast_radius = use_lineage
     if blast_radius:

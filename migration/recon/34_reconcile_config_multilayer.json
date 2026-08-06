@@ -1,0 +1,6 @@
+{
+  "tables": [
+    { "source_name": "sales_src", "target_name": "sales_gold", "join_columns": ["sale_id"] }
+  ],
+  "version": 2
+}
