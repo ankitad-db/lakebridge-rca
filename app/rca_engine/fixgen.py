@@ -26,6 +26,13 @@ import re
 from typing import Any, Optional
 
 from rca_engine.models import Evidence, Finding, Fix, ReconType, RootCauseCategory
+from rca_engine.scan import (
+    ScanScope,
+    and_clauses,
+    key_in_clause,
+    partition_clause,
+    where_clauses,
+)
 
 _SCALE_RE = re.compile(r"\(\s*\d+\s*,\s*(\d+)\s*\)")
 _DECLARED_RE = re.compile(r"declared\s+`([^`]+)`", re.IGNORECASE)
@@ -78,7 +85,16 @@ def _col(finding: Finding) -> str:
     return finding.column or "<col>"
 
 
-def _fix_type_precision(f: Finding) -> Optional[Fix]:
+def _scoped_join(f: Finding, scope: ScanScope | None) -> str:
+    """AND-clause binding a validation join to the flagged keys + partition window."""
+    return and_clauses(
+        key_in_clause(f, scope, "s"),
+        partition_clause(scope, "s"),
+        partition_clause(scope, "t"),
+    )
+
+
+def _fix_type_precision(f: Finding, scope: ScanScope | None = None) -> Optional[Fix]:
     col = _col(f)
     expr, _ = _derivation(f)
     src_type = _declared_source_type(f)
@@ -94,7 +110,7 @@ def _fix_type_precision(f: Finding) -> Optional[Fix]:
             vq = (f"SELECT (count(*) = sum(CASE WHEN round(cast(s.`{col}` AS double), {tgt_scale}) "
                   f"= cast(t.`{col}` AS double) THEN 1 ELSE 0 END)) AS confirmed, count(*) AS n "
                   f"FROM {f.source_table} s JOIN {f.target_table} t ON {on} "
-                  f"WHERE s.`{col}` <> t.`{col}`")
+                  f"WHERE s.`{col}` <> t.`{col}`{_scoped_join(f, scope)}")
         return Fix(
             title=f"Widen `{col}` cast to preserve scale {src_scale}",
             kind="widen_cast", target="transform",
@@ -115,14 +131,14 @@ def _fix_type_precision(f: Finding) -> Optional[Fix]:
     )
 
 
-def _fix_timezone(f: Finding) -> Fix:
+def _fix_timezone(f: Finding, scope: ScanScope | None = None) -> Fix:
     col = _col(f)
     on, keys = _on(f)
     vq = ""
     if keys:
         vq = (f"SELECT (count(DISTINCT unix_timestamp(t.`{col}`) - unix_timestamp(s.`{col}`)) = 1) "
               f"AS confirmed, count(*) AS n FROM {f.source_table} s JOIN {f.target_table} t ON {on} "
-              f"WHERE s.`{col}` <> t.`{col}`")
+              f"WHERE s.`{col}` <> t.`{col}`{_scoped_join(f, scope)}")
     return Fix(
         title=f"Normalize `{col}` to UTC on load",
         kind="tz_normalize", target="transform",
@@ -134,14 +150,14 @@ def _fix_timezone(f: Finding) -> Fix:
     )
 
 
-def _fix_string_format(f: Finding) -> Fix:
+def _fix_string_format(f: Finding, scope: ScanScope | None = None) -> Fix:
     col = _col(f)
     on, keys = _on(f)
     vq = ""
     if keys:
         vq = (f"SELECT (count(*) = sum(CASE WHEN trim(lower(s.`{col}`)) = trim(lower(t.`{col}`)) "
               f"THEN 1 ELSE 0 END)) AS confirmed, count(*) AS n FROM {f.source_table} s JOIN "
-              f"{f.target_table} t ON {on} WHERE s.`{col}` <> t.`{col}`")
+              f"{f.target_table} t ON {on} WHERE s.`{col}` <> t.`{col}`{_scoped_join(f, scope)}")
     return Fix(
         title=f"Align TRIM/case for `{col}`",
         kind="trim_case", target="transform",
@@ -153,7 +169,7 @@ def _fix_string_format(f: Finding) -> Fix:
     )
 
 
-def _fix_null_boolean(f: Finding) -> Fix:
+def _fix_null_boolean(f: Finding, scope: ScanScope | None = None) -> Fix:
     col = _col(f)
     return Fix(
         title=f"Explicit NULL/boolean mapping for `{col}`",
@@ -167,13 +183,14 @@ def _fix_null_boolean(f: Finding) -> Fix:
     )
 
 
-def _fix_volume_missing(f: Finding) -> Fix:
+def _fix_volume_missing(f: Finding, scope: ScanScope | None = None) -> Fix:
     on, keys = _on(f)
     on = on or "s.<key> = t.<key>"
     vq = ""
     if keys:
         vq = (f"SELECT (count(*) > 0) AS confirmed, count(*) AS n "
-              f"FROM {f.source_table} s LEFT ANTI JOIN {f.target_table} t ON {on}")
+              f"FROM {f.source_table} s LEFT ANTI JOIN {f.target_table} t ON {on}"
+              f"{where_clauses(partition_clause(scope, 's'))}")
     return Fix(
         title="Back-fill the rows missing in target",
         kind="backfill", target="load",
@@ -186,14 +203,15 @@ def _fix_volume_missing(f: Finding) -> Fix:
     )
 
 
-def _fix_volume_extra(f: Finding) -> Fix:
+def _fix_volume_extra(f: Finding, scope: ScanScope | None = None) -> Fix:
     keys = _join_keys(f)
     part = ", ".join(f"`{k}`" for k in keys) if keys else "`<key>`"
     vq = ""
     if keys:
         concat = "concat_ws('|', " + ", ".join(f"`{k}`" for k in keys) + ")"
         vq = (f"SELECT ((count(*) - count(DISTINCT {concat})) > 0) AS confirmed, "
-              f"(count(*) - count(DISTINCT {concat})) AS n FROM {f.target_table}")
+              f"(count(*) - count(DISTINCT {concat})) AS n FROM {f.target_table}"
+              f"{where_clauses(partition_clause(scope))}")
     return Fix(
         title="De-duplicate the extra target rows",
         kind="dedup", target="load",
@@ -208,7 +226,7 @@ def _fix_volume_extra(f: Finding) -> Fix:
     )
 
 
-def _fix_semi_structured(f: Finding) -> Fix:
+def _fix_semi_structured(f: Finding, scope: ScanScope | None = None) -> Fix:
     col = _col(f)
     return Fix(
         title=f"Normalize `{col}` in the recon comparison (representation-only)",
@@ -221,7 +239,7 @@ def _fix_semi_structured(f: Finding) -> Fix:
     )
 
 
-def _fix_transpilation(f: Finding) -> Optional[Fix]:
+def _fix_transpilation(f: Finding, scope: ScanScope | None = None) -> Optional[Fix]:
     col = _col(f)
     expr, funcs = _derivation(f)
     if not expr:
@@ -250,9 +268,10 @@ _BUILDERS = {
 }
 
 
-def build_fix(finding: Finding) -> Optional[Fix]:
+def build_fix(finding: Finding, scope: ScanScope | None = None) -> Optional[Fix]:
     """Deterministic fix for a finding's top hypothesis, or ``None`` when the category
-    has no actionable code/load fix (or inputs are insufficient)."""
+    has no actionable code/load fix (or inputs are insufficient). ``scope`` bounds the
+    fix's validation query to the flagged keys / partition window."""
 
     top = finding.top_hypothesis
     if top is None:
@@ -261,12 +280,12 @@ def build_fix(finding: Finding) -> Optional[Fix]:
     if builder is None:
         return None
     try:
-        return builder(finding)
+        return builder(finding, scope)
     except Exception:  # a fix builder must never break the pipeline
         return None
 
 
-def generate_fixes(findings: list[Finding]) -> list[Finding]:
+def generate_fixes(findings: list[Finding], scope: ScanScope | None = None) -> list[Finding]:
     """Attach a suggested ``Fix`` to every finding whose category has one. Schema-only
     findings are skipped (they're resolved by correcting the type mapping, already
     covered by the type_precision fix on the column findings)."""
@@ -277,7 +296,7 @@ def generate_fixes(findings: list[Finding]) -> list[Finding]:
         top = f.top_hypothesis
         if top is None:
             continue
-        fix = build_fix(f)
+        fix = build_fix(f, scope)
         if fix is not None:
             top.fix = fix
             # Surface a one-line pointer in the evidence stream too, so the provenance

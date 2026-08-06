@@ -115,6 +115,13 @@ Every step is recorded in an audit table (see "Audit trail").
     single constant TZ offset, or trim/case only, or the missing/duplicate keys). Fixes
     that pass are marked **✅ validated**; the rest stay unvalidated suggestions. Same
     discipline as verdicts: nothing is presented as trusted unless a query confirms it.
+  - **Scan scoping** (`scan_mode: scoped`, default) — the live confirming, drift, and
+    fix-validation queries are bounded so they don't full-scan source and target: a column
+    confirm re-checks only the reconciliation-**flagged keys** (`IN (...)` push-down), and
+    full-table aggregates are restricted to the `scan_partition_column` / `scan_date_*`
+    window when set. This is **exact** — the true total mismatch count still comes from the
+    recon metrics, and key-scoped confirms are annotated `[scoped to flagged keys]`. Set
+    `scan_mode: full` for the original unbounded scans.
 
 ## Verdict taxonomy (this is the field the human acts on)
 

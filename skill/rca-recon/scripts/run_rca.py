@@ -164,6 +164,18 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
     runner = SparkQueryRunner(spark)
     use_lineage = bool(cfg.get("use_uc_lineage", False))
 
+    # Scan scoping: keep the live confirming/drift/fix-validation queries cheap by binding
+    # them to the reconciliation-flagged keys and (optionally) a partition/date window,
+    # instead of full-scanning source and target. Defaults to "scoped".
+    from rca_engine.scan import ScanScope
+    scope = ScanScope(
+        mode=str(cfg.get("scan_mode", "scoped")),
+        partition_column=str(cfg.get("scan_partition_column", "") or ""),
+        date_start=str(cfg.get("scan_date_start", "") or ""),
+        date_end=str(cfg.get("scan_date_end", "") or ""),
+        max_keys=int(cfg.get("scan_max_keys", 500)),
+    )
+
     # Learning loop: load priors from previously-confirmed runs so recurring causes are
     # proposed (and then confirmed by the drill-down). Off unless use_memory is set.
     dialect = cfg.get("dialect", "snowflake")
@@ -188,6 +200,8 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
         validate_fixes=bool(cfg.get("validate_fixes", True)),
         # Learned priors from prior confirmed runs (None unless use_memory is set).
         memory=memory,
+        # Bound the live source/target scans (flagged keys + partition window).
+        scope=scope,
     )
 
     # One self-contained folder per recon run: rca_<id>/ with 00_index.ipynb, the

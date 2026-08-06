@@ -9,7 +9,6 @@ from rca_engine.drift import run_drift
 from rca_engine.lakebridge import ColumnTransform, TableMapping
 from rca_engine.lineage import run_blast_radius
 from rca_engine.models import (
-    Evidence,
     Finding,
     Hypothesis,
     MismatchSample,

@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 from rca_engine.ingest import QueryRunner
 from rca_engine.models import Evidence, Finding, ReconType
+from rca_engine.scan import ScanScope, partition_clause, where_clauses
 
 # A distribution shift is "material" (population changed, not just representation)
 # when the null-rate moves by more than this many percentage points or the number of
@@ -54,16 +55,20 @@ def _rel_change(src: Optional[float], tgt: Optional[float]) -> Optional[float]:
     return (tgt - src) / abs(src)
 
 
-def _drift_query(st: str, tt: str, col: str) -> str:
+def _drift_query(st: str, tt: str, col: str, scope: ScanScope | None = None) -> str:
+    # Restrict each single-table aggregate to the configured partition window so a drift
+    # check reads one partition instead of full history (exact within the window).
+    w = where_clauses(partition_clause(scope))
+
     def block(tbl: str, p: str) -> str:
         return (
-            f"(SELECT count(*) FROM {tbl}) AS {p}_n, "
-            f"(SELECT sum(CASE WHEN `{col}` IS NULL THEN 1 ELSE 0 END) FROM {tbl}) AS {p}_nulls, "
-            f"(SELECT approx_count_distinct(`{col}`) FROM {tbl}) AS {p}_ndv, "
-            f"(SELECT avg(try_cast(`{col}` AS double)) FROM {tbl}) AS {p}_avg, "
-            f"(SELECT stddev(try_cast(`{col}` AS double)) FROM {tbl}) AS {p}_std, "
-            f"(SELECT min(try_cast(`{col}` AS double)) FROM {tbl}) AS {p}_min, "
-            f"(SELECT max(try_cast(`{col}` AS double)) FROM {tbl}) AS {p}_max"
+            f"(SELECT count(*) FROM {tbl}{w}) AS {p}_n, "
+            f"(SELECT sum(CASE WHEN `{col}` IS NULL THEN 1 ELSE 0 END) FROM {tbl}{w}) AS {p}_nulls, "
+            f"(SELECT approx_count_distinct(`{col}`) FROM {tbl}{w}) AS {p}_ndv, "
+            f"(SELECT avg(try_cast(`{col}` AS double)) FROM {tbl}{w}) AS {p}_avg, "
+            f"(SELECT stddev(try_cast(`{col}` AS double)) FROM {tbl}{w}) AS {p}_std, "
+            f"(SELECT min(try_cast(`{col}` AS double)) FROM {tbl}{w}) AS {p}_min, "
+            f"(SELECT max(try_cast(`{col}` AS double)) FROM {tbl}{w}) AS {p}_max"
         )
 
     return "SELECT " + block(st, "s") + ", " + block(tt, "t")
@@ -125,10 +130,12 @@ def _detail(col: str, d: dict[str, Any]) -> str:
     return f"Distribution of `{col}`: {body}. {verdict_hint}."
 
 
-def run_drift(findings: list[Finding], runner: QueryRunner) -> list[Finding]:
+def run_drift(
+    findings: list[Finding], runner: QueryRunner, scope: ScanScope | None = None
+) -> list[Finding]:
     """Attach a distribution-drift evidence line (+ structured ``metadata['drift']``)
     to every column-level finding. Verdicts are left to the drill-down; this only
-    quantifies and annotates."""
+    quantifies and annotates. ``scope`` restricts the stats to a partition window."""
 
     for f in findings:
         if f.recon_type != ReconType.COLUMN_MISMATCH or not f.column:
@@ -137,7 +144,7 @@ def run_drift(findings: list[Finding], runner: QueryRunner) -> list[Finding]:
         if top is None:
             continue
         try:
-            rows = runner.query(_drift_query(f.source_table, f.target_table, f.column))
+            rows = runner.query(_drift_query(f.source_table, f.target_table, f.column, scope))
         except Exception:
             continue
         if not rows:

@@ -25,7 +25,6 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any
 
 from rca_engine.fixgen import _declared_source_type, _derivation, _scale

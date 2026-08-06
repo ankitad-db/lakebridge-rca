@@ -10,6 +10,7 @@ from rca_engine.classify import classify_all
 from rca_engine.drilldown import run_drilldown
 from rca_engine.ingest import QueryRunner, ingest_with_summaries
 from rca_engine.models import RcaResult
+from rca_engine.scan import ScanScope
 
 
 def _apply_mapping(summaries, mapping: dict) -> None:
@@ -41,6 +42,7 @@ def analyze(
     fixes: bool = True,
     validate_fixes: bool = True,
     memory: dict | None = None,
+    scope: ScanScope | None = None,
 ) -> RcaResult:
     """Run the end-to-end RCA for a recon run.
 
@@ -62,6 +64,11 @@ def analyze(
     - ``memory`` (a ``{signature: MemoryHit}`` map from ``rca_engine.memory.load_memory``)
       applies learned priors from prior confirmed runs *before* the drill-down, so a
       recurring cause is proposed and then confirmed by a query (never on memory alone).
+    - ``scope`` (:class:`rca_engine.scan.ScanScope`) bounds the live confirming, drift, and
+      fix-validation queries so they don't full-scan the source/target: ``"scoped"`` binds
+      column confirms to the reconciliation-flagged keys and restricts full-table
+      aggregates to a partition/date window; ``"full"`` (or ``None``) keeps the original
+      unbounded scans.
     """
 
     findings, summaries = ingest_with_summaries(
@@ -74,10 +81,10 @@ def analyze(
         from rca_engine.memory import apply_memory
         findings = apply_memory(findings, memory, dialect)
     if drilldown:
-        findings = run_drilldown(findings, runner)
+        findings = run_drilldown(findings, runner, scope)
     if drift:
         from rca_engine.drift import run_drift
-        findings = run_drift(findings, runner)
+        findings = run_drift(findings, runner, scope)
     if use_lineage:
         from rca_engine.lineage import run_lineage
         findings = run_lineage(findings, runner)
@@ -88,7 +95,7 @@ def analyze(
         run_blast_radius(findings, summaries, runner)
     if fixes:
         from rca_engine.fixgen import generate_fixes
-        findings = generate_fixes(findings)
+        findings = generate_fixes(findings, scope)
         if validate_fixes and runner is not None:
             from rca_engine.fixgen import validate_all_fixes
             validate_all_fixes(findings, runner)

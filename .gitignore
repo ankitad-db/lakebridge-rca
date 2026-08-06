@@ -27,3 +27,6 @@ databricks.yml.bak
 .vscode/
 .idea/
 .DS_Store
+
+# Editor/agent tooling
+.isaac/

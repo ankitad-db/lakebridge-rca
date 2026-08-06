@@ -15,6 +15,13 @@ from typing import Any
 
 from rca_engine.ingest import QueryRunner
 from rca_engine.models import Evidence, Finding, ReconType, RootCauseCategory, Verdict
+from rca_engine.scan import (
+    ScanScope,
+    and_clauses,
+    key_in_clause,
+    partition_clause,
+    where_clauses,
+)
 
 
 def _num(v: Any) -> float:
@@ -48,18 +55,28 @@ def _one(runner: QueryRunner, sql: str) -> dict[str, Any]:
     return rows[0] if rows else {}
 
 
-def _confirm_column(finding: Finding, runner: QueryRunner, keys: list[str]) -> Evidence | None:
+def _confirm_column(
+    finding: Finding, runner: QueryRunner, keys: list[str], scope: ScanScope | None = None
+) -> Evidence | None:
     st, tt, col = finding.source_table, finding.target_table, finding.column
     if not (col and keys):
         return None
     on = " AND ".join(f"s.`{k}` = t.`{k}`" for k in keys)
     cat = finding.top_hypothesis.category if finding.top_hypothesis else None
+    # Bound the join to the reconciliation-flagged keys and/or the partition window so a
+    # confirming query re-checks only the rows in question instead of full-scanning both
+    # tables. Exact for those rows; the true total still comes from the recon metrics.
+    scoped = and_clauses(
+        key_in_clause(finding, scope, "s"),
+        partition_clause(scope, "s"),
+        partition_clause(scope, "t"),
+    )
 
     if cat == RootCauseCategory.TIMEZONE:
         sql = (
             f"SELECT count(DISTINCT unix_timestamp(t.`{col}`) - unix_timestamp(s.`{col}`)) AS distinct_offsets, "
             f"max(unix_timestamp(t.`{col}`) - unix_timestamp(s.`{col}`))/3600.0 AS offset_hours, count(*) AS n "
-            f"FROM {st} s JOIN {tt} t ON {on} WHERE s.`{col}` <> t.`{col}`"
+            f"FROM {st} s JOIN {tt} t ON {on} WHERE s.`{col}` <> t.`{col}`{scoped}"
         )
         r = _one(runner, sql)
         constant = _num(r.get("distinct_offsets")) == 1
@@ -81,7 +98,7 @@ def _confirm_column(finding: Finding, runner: QueryRunner, keys: list[str]) -> E
             f"SELECT count(*) AS n, avg(abs(cast(s.`{col}` AS double) - cast(t.`{col}` AS double))) AS avg_abs_diff, "
             f"max(abs(cast(s.`{col}` AS double) - cast(t.`{col}` AS double))) AS max_abs_diff, "
             f"sum(CASE WHEN round(cast(s.`{col}` AS double), 2) = cast(t.`{col}` AS double) THEN 1 ELSE 0 END) AS eq_at_2dp "
-            f"FROM {st} s JOIN {tt} t ON {on} WHERE s.`{col}` <> t.`{col}`"
+            f"FROM {st} s JOIN {tt} t ON {on} WHERE s.`{col}` <> t.`{col}`{scoped}"
         )
         r = _one(runner, sql)
         n = _num(r.get("n"))
@@ -100,7 +117,7 @@ def _confirm_column(finding: Finding, runner: QueryRunner, keys: list[str]) -> E
         sql = (
             f"SELECT count(*) AS n, "
             f"sum(CASE WHEN trim(lower(s.`{col}`)) = trim(lower(t.`{col}`)) THEN 1 ELSE 0 END) AS cosmetic "
-            f"FROM {st} s JOIN {tt} t ON {on} WHERE s.`{col}` <> t.`{col}`"
+            f"FROM {st} s JOIN {tt} t ON {on} WHERE s.`{col}` <> t.`{col}`{scoped}"
         )
         r = _one(runner, sql)
         n, cosmetic = _num(r.get("n")), _num(r.get("cosmetic"))
@@ -116,7 +133,7 @@ def _confirm_column(finding: Finding, runner: QueryRunner, keys: list[str]) -> E
         sql = (
             f"SELECT count(*) AS n, "
             f"sum(CASE WHEN s.`{col}` IS NULL OR t.`{col}` IS NULL THEN 1 ELSE 0 END) AS null_involved "
-            f"FROM {st} s JOIN {tt} t ON {on} WHERE NOT (s.`{col}` <=> t.`{col}`)"
+            f"FROM {st} s JOIN {tt} t ON {on} WHERE NOT (s.`{col}` <=> t.`{col}`){scoped}"
         )
         r = _one(runner, sql)
         return Evidence(
@@ -132,7 +149,7 @@ def _confirm_column(finding: Finding, runner: QueryRunner, keys: list[str]) -> E
         sql = (
             f"SELECT count(*) AS src_total, "
             f"sum(CASE WHEN `{col}` IS NULL THEN 1 ELSE 0 END) AS src_nulls "
-            f"FROM {st}"
+            f"FROM {st}{where_clauses(partition_clause(scope))}"
         )
         r = _one(runner, sql)
         src_nulls, src_total = _num(r.get("src_nulls")), _num(r.get("src_total"))
@@ -148,14 +165,17 @@ def _confirm_column(finding: Finding, runner: QueryRunner, keys: list[str]) -> E
     return None
 
 
-def _confirm_volume(finding: Finding, runner: QueryRunner, key: str | None) -> Evidence | None:
+def _confirm_volume(
+    finding: Finding, runner: QueryRunner, key: str | None, scope: ScanScope | None = None
+) -> Evidence | None:
     st, tt = finding.source_table, finding.target_table
     if not key:
         return None
+    pw = where_clauses(partition_clause(scope))
     if finding.recon_type == ReconType.MISSING_IN_TARGET:
-        sql = f"SELECT max(`{key}`) AS src_max FROM {st}"
+        sql = f"SELECT max(`{key}`) AS src_max FROM {st}{pw}"
         src_max = _num(_one(runner, sql).get("src_max"))
-        tgt_max = _num(_one(runner, f"SELECT max(`{key}`) AS tgt_max FROM {tt}").get("tgt_max"))
+        tgt_max = _num(_one(runner, f"SELECT max(`{key}`) AS tgt_max FROM {tt}{pw}").get("tgt_max"))
         watermark = tgt_max < src_max
         return Evidence(
             label="drilldown",
@@ -173,6 +193,7 @@ def _confirm_volume(finding: Finding, runner: QueryRunner, key: str | None) -> E
     # MISSING_IN_SOURCE (extra rows in target)
     sql = (
         f"SELECT count(*) AS extra FROM {tt} t LEFT ANTI JOIN {st} s ON s.`{key}` = t.`{key}`"
+        f"{where_clauses(partition_clause(scope, 't'))}"
     )
     extra = _num(_one(runner, sql).get("extra"))
     return Evidence(
@@ -184,17 +205,25 @@ def _confirm_volume(finding: Finding, runner: QueryRunner, key: str | None) -> E
     )
 
 
-def run_drilldown(findings: list[Finding], runner: QueryRunner) -> list[Finding]:
-    """Execute confirmation queries and finalize verdicts in place."""
+def run_drilldown(
+    findings: list[Finding], runner: QueryRunner, scope: ScanScope | None = None
+) -> list[Finding]:
+    """Execute confirmation queries and finalize verdicts in place.
+
+    ``scope`` (see :class:`rca_engine.scan.ScanScope`) bounds the confirming queries to the
+    reconciliation-flagged keys and/or a partition window so they don't full-scan the source
+    and target. When a column confirm is key-scoped its ``n`` reflects only the sampled keys,
+    so the recon-derived ``mismatch_count`` is left intact (not overwritten)."""
 
     tk = _table_keys(findings)
+    key_scoped = bool(scope and scope.scoped)
     for f in findings:
         try:
             if f.recon_type == ReconType.COLUMN_MISMATCH:
-                ev = _confirm_column(f, runner, _join_keys(f) or tk.get(f.target_table, []))
+                ev = _confirm_column(f, runner, _join_keys(f) or tk.get(f.target_table, []), scope)
             elif f.recon_type in (ReconType.MISSING_IN_TARGET, ReconType.MISSING_IN_SOURCE):
                 key = (tk.get(f.target_table) or [None])[0]
-                ev = _confirm_volume(f, runner, key)
+                ev = _confirm_volume(f, runner, key, scope)
             else:
                 ev = None
         except Exception as e:  # never break the pipeline on a bad query
@@ -202,14 +231,21 @@ def run_drilldown(findings: list[Finding], runner: QueryRunner) -> list[Finding]
 
         if ev is None:
             continue
+        # This confirm was bounded to the flagged keys iff scoping is on AND the finding
+        # actually carried sampled keys to bind to.
+        this_key_scoped = key_scoped and bool(key_in_clause(f, scope, "s"))
         # Align the per-column count with the exact number of differing rows the
         # confirming query found (recon `details` only stores a capped sample, so
         # the ingested sample count can under-report). Row-level counts already
-        # come straight from recon metrics and are left untouched.
-        if f.recon_type == ReconType.COLUMN_MISMATCH and ev.data and ev.data.get("n") is not None:
+        # come straight from recon metrics and are left untouched. When the query was
+        # key-scoped its ``n`` is only the sample, so keep the recon total instead.
+        if (not this_key_scoped and f.recon_type == ReconType.COLUMN_MISMATCH
+                and ev.data and ev.data.get("n") is not None):
             exact = int(_num(ev.data.get("n")))
             if exact > 0:
                 f.mismatch_count = exact
+        if this_key_scoped and ev.detail:
+            ev.detail = ev.detail + " [scoped to flagged keys]"
         top = f.top_hypothesis
         if top is not None:
             top.evidence.insert(0, ev)

@@ -124,6 +124,24 @@ memory_table: ""
 # auto-applied). On by default; set false to omit the fix cells.
 suggest_fixes: true
 
+# Scan scoping — keep the LIVE confirming / drift / fix-validation queries cheap on large
+# tables. The deterministic first pass and the sampled example rows are already cheap (they
+# read the pre-computed recon output); these knobs bound the queries that would otherwise
+# aggregate over the full source and target.
+#   scoped (default): a column confirm re-checks only the reconciliation-FLAGGED keys
+#                     (IN (...) push-down), and full-table aggregates (drift, watermark,
+#                     distinct counts) are restricted to the partition/date window below.
+#                     Exact — the true total mismatch count still comes from recon metrics.
+#   full            : original behavior — unbounded full-table scans.
+scan_mode: scoped
+# Optional partition/date column present on BOTH source and target; when set with a range,
+# drift/volume aggregates read just that window instead of full history. Leave blank to skip.
+scan_partition_column: ""
+scan_date_start: ""      # e.g. "2024-01-01"
+scan_date_end: ""        # e.g. "2024-01-31"
+# Cap on how many flagged keys go into a confirming IN (...) predicate (keeps SQL bounded).
+scan_max_keys: 500
+
 # Fix-validation gate. When on, each suggested fix's validation query is executed to
 # check the reconciliation gap is *entirely* explained by the mechanism the fix corrects
 # (e.g. the whole diff is scale rounding / trim-case / a constant TZ offset / duplicate
