@@ -16,6 +16,8 @@ env/
 
 # Local RCA outputs / generated notebooks
 out/
+rca_output/
+rca_output_demo/
 *.rca.json
 *_rca.ipynb
 

@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ReconResolve — RCA Tool Explorer</title>
+<style>
+  :root{
+    --lava:#FF3621; --lava-2:#FF5F46; --navy:#1B3139; --navy-2:#2D4550;
+    --oat:#F9F7F4; --oat-2:#EEEDE9; --ink:#1B3139; --muted:#5A6B72;
+    --green:#00A972; --blue:#2272B4; --amber:#FFAB00; --violet:#8A63D2;
+    --line:#C9D1D3; --card:#FFFFFF; --shadow:0 2px 10px rgba(27,49,57,.08);
+    --shadow-lg:0 12px 40px rgba(27,49,57,.18);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:var(--oat); line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--blue)}
+  code{font-family:"SF Mono",Menlo,Consolas,monospace; background:var(--oat-2); padding:.1em .35em;
+    border-radius:5px; font-size:.86em; color:var(--navy)}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 22px}
+
+  /* Header */
+  header{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 60%,#33525e 100%); color:#fff;
+    padding:38px 0 30px; position:relative; overflow:hidden}
+  header::after{content:""; position:absolute; right:-80px; top:-60px; width:340px; height:340px;
+    background:radial-gradient(circle at center,rgba(255,54,33,.45),transparent 68%); filter:blur(6px)}
+  .brand{display:flex; align-items:center; gap:12px; font-weight:700; letter-spacing:.4px;
+    text-transform:uppercase; font-size:12.5px; color:#ffd7cf}
+  .brand .dot{width:12px;height:12px;border-radius:3px;background:var(--lava);box-shadow:0 0 0 4px rgba(255,54,33,.25)}
+  h1{margin:12px 0 6px; font-size:38px; line-height:1.1; font-weight:800; max-width:760px}
+  h1 .accent{color:var(--lava-2)}
+  .sub{max-width:720px; color:#cdd8dc; font-size:16.5px}
+  .meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:20px}
+  .pill{background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.18); color:#eef4f5;
+    padding:7px 12px; border-radius:999px; font-size:12.5px; font-weight:600; backdrop-filter:blur(4px)}
+  .pill b{color:#fff}
+
+  /* Filter bar */
+  .filters{position:sticky; top:0; z-index:40; background:rgba(249,247,244,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line); padding:12px 0}
+  .filters .row{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .filters .lbl{font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-right:2px}
+  .chip{border:1.5px solid var(--line); background:#fff; color:var(--navy); padding:6px 13px; border-radius:999px;
+    font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:.15s}
+  .chip .sw{width:10px;height:10px;border-radius:50%}
+  .chip[aria-pressed="true"]{border-color:var(--navy); background:var(--navy); color:#fff}
+  .chip:hover{transform:translateY(-1px); box-shadow:var(--shadow)}
+  .chip.reset{border-style:dashed}
+
+  section{padding:44px 0}
+  .eyebrow{color:var(--lava); font-weight:800; text-transform:uppercase; letter-spacing:1.2px; font-size:12.5px}
+  h2{font-size:27px; margin:8px 0 6px; font-weight:800}
+  .lead{color:var(--muted); max-width:760px; margin:0 0 26px; font-size:15.5px}
+
+  /* Flow diagram */
+  .flow{position:relative}
+  #connectors{position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:1}
+  .lanes{position:relative; z-index:2; display:flex; flex-direction:column; gap:30px}
+  .lane{display:flex; justify-content:center; gap:20px; flex-wrap:wrap}
+  .lane.entry{gap:16px}
+  .node{position:relative; background:var(--card); border:1.5px solid var(--line); border-radius:16px;
+    padding:14px 16px; width:250px; cursor:pointer; box-shadow:var(--shadow); transition:.18s; text-align:left}
+  .node:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg); border-color:var(--navy-2)}
+  .node.active{border-color:var(--lava); box-shadow:0 0 0 3px rgba(255,54,33,.16),var(--shadow-lg)}
+  .node .top{display:flex; align-items:center; gap:10px}
+  .node .ico{font-size:20px; width:34px; height:34px; display:grid; place-items:center; border-radius:10px;
+    background:var(--oat-2); flex:none}
+  .node .num{position:absolute; top:-10px; left:-10px; width:26px; height:26px; border-radius:50%;
+    background:var(--navy); color:#fff; font-size:12.5px; font-weight:800; display:grid; place-items:center; z-index:3}
+  .node h4{margin:0; font-size:15px; font-weight:800; letter-spacing:.1px}
+  .node p{margin:9px 0 0; font-size:12.7px; color:var(--muted)}
+  .tags{display:flex; gap:5px; margin-top:10px; flex-wrap:wrap}
+  .tag{font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; padding:2.5px 7px; border-radius:6px}
+  .t-input{background:#eef2f4;color:var(--navy)}
+  .t-det{background:rgba(0,169,114,.14); color:#00754f}
+  .t-agent{background:rgba(138,99,210,.16); color:#5b3ba0}
+  .t-live{background:rgba(34,114,180,.14); color:#175a91}
+  .t-lineage{background:rgba(255,171,0,.18); color:#8a5b00}
+  .t-code{background:rgba(255,54,33,.12); color:#c62a1c}
+  .node.dim{opacity:.28; filter:grayscale(.5)}
+  .node.dim:hover{transform:none}
+  .lane-note{align-self:center; font-size:12px; color:var(--muted); font-weight:600; max-width:150px; text-align:center}
+
+  .legend{display:flex; gap:16px; flex-wrap:wrap; margin:6px 0 22px; font-size:12.5px; color:var(--muted)}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .legend .ln{width:26px;height:0;border-top:2px solid var(--navy)}
+  .legend .ln.dash{border-top:2px dashed var(--lava)}
+
+  /* Detail drawer */
+  .drawer{position:fixed; top:0; right:0; height:100%; width:min(430px,92vw); background:#fff;
+    box-shadow:-16px 0 46px rgba(27,49,57,.24); transform:translateX(105%); transition:transform .28s cubic-bezier(.4,0,.2,1);
+    z-index:80; display:flex; flex-direction:column}
+  .drawer.open{transform:translateX(0)}
+  .drawer .dh{padding:22px 22px 16px; border-bottom:1px solid var(--line); position:relative;
+    background:linear-gradient(135deg,var(--navy),var(--navy-2)); color:#fff}
+  .drawer .dh .ico{font-size:26px}
+  .drawer .dh h3{margin:8px 0 4px; font-size:20px; font-weight:800}
+  .drawer .dh .kicker{font-size:11.5px; text-transform:uppercase; letter-spacing:1px; color:#ffb7ac; font-weight:800}
+  .drawer .close{position:absolute; top:16px; right:16px; background:rgba(255,255,255,.14); border:0; color:#fff;
+    width:32px;height:32px;border-radius:50%; font-size:18px; cursor:pointer; line-height:1}
+  .drawer .db{padding:20px 22px; overflow:auto}
+  .drawer .db h5{margin:18px 0 7px; font-size:11.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--lava); font-weight:800}
+  .drawer .db p{margin:0 0 10px; font-size:14px; color:var(--navy)}
+  .drawer .db ul{margin:0; padding-left:18px; font-size:13.5px; color:var(--navy)}
+  .drawer .db li{margin:4px 0}
+  .drawer .files code{display:inline-block; margin:3px 5px 0 0}
+  .backdrop{position:fixed; inset:0; background:rgba(27,49,57,.35); opacity:0; pointer-events:none; transition:.28s; z-index:70}
+  .backdrop.open{opacity:1; pointer-events:auto}
+
+  /* generic card grids */
+  .grid{display:grid; gap:16px}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:var(--shadow)}
+  .card .ci{font-size:22px}
+  .card h4{margin:8px 0 5px; font-size:15px; font-weight:800}
+  .card p{margin:0; font-size:13px; color:var(--muted)}
+  .card .ex{margin-top:9px; font-size:12px; color:var(--navy); background:var(--oat); border-radius:8px; padding:8px 10px}
+
+  /* Config reference */
+  .cfg-search{display:flex; align-items:center; gap:10px; margin:0 0 20px}
+  .cfg-search input{flex:1; max-width:420px; padding:11px 14px; border:1.5px solid var(--line); border-radius:11px;
+    font-size:14px; outline:none; background:#fff}
+  .cfg-search input:focus{border-color:var(--navy)}
+  .cfg-search .count{font-size:12.5px; color:var(--muted); font-weight:600}
+  .cfg-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:16px}
+  .cfg-group{background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow)}
+  .cfg-group h4{margin:0 0 6px; font-size:14.5px; font-weight:800; display:flex; align-items:center; gap:8px}
+  .cfg-row{padding:10px 0; border-top:1px dashed var(--line)}
+  .cfg-row .k{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
+  .cfg-row code{font-weight:800; color:var(--navy); background:var(--oat-2); font-size:12.5px}
+  .cfg-row .def{font-size:11px; color:#7a8a90; background:var(--oat); border:1px solid var(--line);
+    padding:1px 7px; border-radius:6px; font-family:monospace}
+  .cfg-row p{margin:5px 0 0; font-size:12.6px; color:var(--muted)}
+  .cfg-row .vals{margin-top:7px; display:flex; align-items:flex-start; gap:6px; flex-wrap:wrap}
+  .cfg-row .vals .vlbl{font-size:9.5px; font-weight:800; letter-spacing:.5px; color:#96a4a9; text-transform:uppercase;
+    padding-top:3px}
+  .cfg-row .vals code{font-size:11px; background:#eaf1f3; color:#1c4a63; border:1px solid #d7e3e7; font-weight:700}
+  .cfg-group.hide,.cfg-row.hide{display:none}
+  .cfg-note{margin-top:18px; font-size:13px; color:var(--muted); background:#fff; border:1px solid var(--line);
+    border-radius:12px; padding:14px 16px}
+  .cfg-note code{font-size:12px}
+  .drawer .cfgkeys code{display:inline-block; margin:3px 5px 0 0; font-size:11.5px}
+  .drawer .ex-out{background:var(--navy); color:#e3edf0; border-radius:10px; padding:11px 13px;
+    font-family:"SF Mono",Menlo,Consolas,monospace; font-size:11.7px; line-height:1.5; white-space:pre-wrap; word-break:break-word}
+  @media (max-width:900px){ .cfg-grid{grid-template-columns:1fr} }
+
+  .verdict{border-left:5px solid var(--line)}
+  .verdict.mig{border-color:var(--lava)} .verdict.gen{border-color:var(--blue)}
+  .verdict.ben{border-color:var(--green)} .verdict.rev{border-color:var(--amber)}
+
+  .split{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .panel{background:#fff; border:1px solid var(--line); border-radius:16px; overflow:hidden; box-shadow:var(--shadow)}
+  .panel .ph{padding:14px 18px; font-weight:800; font-size:15px; display:flex; align-items:center; gap:9px; color:#fff}
+  .panel.det .ph{background:linear-gradient(90deg,#00754f,#00a972)}
+  .panel.agent .ph{background:linear-gradient(90deg,#5b3ba0,#8a63d2)}
+  .panel ul{margin:0; padding:14px 18px 16px 34px; font-size:13.5px}
+  .panel li{margin:7px 0}
+
+  .demo{background:linear-gradient(135deg,#1B3139,#243f49); color:#fff; border-radius:18px; padding:26px; box-shadow:var(--shadow-lg)}
+  .demo h3{margin:0 0 4px; font-size:20px}
+  .demo .rid{font-family:monospace; background:rgba(255,255,255,.12); padding:3px 8px; border-radius:6px; font-size:12.5px}
+  .demo .rows{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:18px}
+  .demo .stat{background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14); border-radius:12px; padding:14px}
+  .demo .stat b{display:block; font-size:26px; color:#fff}
+  .demo .stat span{font-size:12px; color:#bcccd1}
+  .demo table{width:100%; border-collapse:collapse; margin-top:18px; font-size:13px}
+  .demo th,.demo td{text-align:left; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.12)}
+  .demo th{color:#ffb7ac; font-size:11px; text-transform:uppercase; letter-spacing:.5px}
+  .badge{font-size:11px; font-weight:800; padding:2px 7px; border-radius:6px}
+  .b-mig{background:rgba(255,54,33,.22); color:#ffb0a6}
+  .b-ok{background:rgba(0,169,114,.25); color:#8ff0cd}
+
+  /* Expanded demo */
+  .demo-hero{background:linear-gradient(135deg,#1B3139,#243f49); color:#fff; border-radius:16px; padding:22px 24px; box-shadow:var(--shadow-lg)}
+  .demo-hero .rid{font-family:monospace; background:rgba(255,255,255,.12); padding:3px 8px; border-radius:6px; font-size:12.5px}
+  .demo-hero p{color:#cdd8dc; margin:8px 0 0; font-size:14px}
+  .demo-hero code{background:rgba(255,255,255,.12); color:#fff; font-size:12px}
+  .hero-stats{display:flex; gap:12px; margin-top:16px; flex-wrap:wrap}
+  .hero-stats .s{background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14); border-radius:12px; padding:12px 15px; flex:1; min-width:150px}
+  .hero-stats .s b{display:block; font-size:22px; color:#fff}
+  .hero-stats .s span{font-size:11.5px; color:#bcccd1}
+  .demo-two{display:grid; grid-template-columns:1.35fr 1fr; gap:16px; margin-top:16px}
+  .topo{background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px; box-shadow:var(--shadow)}
+  .topo svg{width:100%; height:auto; display:block}
+  .points{background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px; box-shadow:var(--shadow)}
+  .points h4{margin:0 0 4px; font-size:14px}
+  .point{display:flex; gap:10px; padding:9px 0; border-top:1px dashed var(--line)}
+  .point:first-of-type{border-top:0}
+  .point .ic{font-size:17px; flex:none; width:22px; text-align:center}
+  .point b{font-size:12.8px} .point p{margin:2px 0 0; font-size:11.8px; color:var(--muted)}
+  .steps-h{margin:26px 0 4px; font-size:16px; font-weight:800}
+  .step{position:relative; background:#fff; border:1px solid var(--line); border-radius:14px; padding:15px 15px 14px; box-shadow:var(--shadow)}
+  .step .n{width:25px; height:25px; border-radius:50%; background:var(--lava); color:#fff; font-weight:800; display:grid; place-items:center; font-size:12.5px}
+  .step h4{margin:9px 0 6px; font-size:13.8px}
+  .step .cmd{background:var(--navy); color:#dfe9ec; border-radius:9px; padding:9px 11px; font-family:"SF Mono",Menlo,Consolas,monospace; font-size:10.6px; line-height:1.5; white-space:pre-wrap; word-break:break-word; margin:0 0 8px}
+  .step .say{font-size:11.7px; color:var(--muted)} .step .say b{color:var(--lava); text-transform:uppercase; letter-spacing:.4px; font-size:9.5px}
+  @media (max-width:900px){ .demo-two{grid-template-columns:1fr} }
+  .points .point .ic{width:24px;height:24px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;
+    font-size:12px;display:grid;place-items:center}
+
+  /* light comparison table */
+  .ltable{width:100%; border-collapse:collapse; font-size:13px; background:#fff; border:1px solid var(--line);
+    border-radius:12px; overflow:hidden; min-width:720px}
+  .ltable th,.ltable td{text-align:left; padding:11px 13px; border-bottom:1px solid var(--line); vertical-align:top}
+  .ltable th{background:var(--navy); color:#e7eef0; font-size:10.5px; text-transform:uppercase; letter-spacing:.5px}
+  .ltable tr:last-child td{border-bottom:0}
+  .ltable td:first-child{font-weight:700; color:var(--navy)}
+  .ltable code{font-size:11.6px}
+  .ltable .up{color:#c62a1c; font-weight:600}
+  .ltable .up2{color:var(--muted)}
+  .badge2{font-size:11px; font-weight:800; padding:2px 8px; border-radius:6px; white-space:nowrap; display:inline-block}
+  .badge2.mig{background:rgba(255,54,33,.13); color:#c62a1c}
+  .badge2.ok{background:rgba(0,169,114,.16); color:#00754f}
+  span.up{color:#c62a1c; font-weight:700}
+
+  /* two-tier worked example */
+  .panel .pc{padding:14px 18px 16px}
+  .panel .pc .cs{font-weight:800; font-size:13.5px; margin-bottom:9px; color:var(--navy)}
+  .panel .pc ul{padding-left:18px; margin:0 0 11px}
+  .panel .pc li{margin:6px 0; font-size:13px}
+  .panel .pc .out{background:var(--navy); color:#e3edf0; border-radius:9px; padding:10px 12px;
+    font-family:"SF Mono",Menlo,Consolas,monospace; font-size:11.5px; line-height:1.5; white-space:pre-wrap; word-break:break-word}
+  .panel .ph .cap{opacity:.85; font-weight:700; font-size:12.5px}
+  .tflow{background:#fff; border:1px solid var(--line); border-radius:14px; padding:15px 18px; box-shadow:var(--shadow); margin-top:16px}
+  .tflow .hd{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .tf-node{background:var(--navy); color:#fff; border-radius:9px; padding:7px 12px; font-size:12.5px; font-weight:800}
+  .tf-dec{background:#FFF3D6; border:1.5px solid #E0A100; border-radius:9px; padding:7px 12px; font-size:12.5px; font-weight:800; color:#7a5300}
+  .tf-arrow{color:#96a4a9; font-weight:800}
+  .tf-lane{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 13px; border-radius:10px; margin-top:10px; font-size:12.8px}
+  .tf-lane.det{background:rgba(0,169,114,.08); border:1px solid rgba(0,169,114,.30)}
+  .tf-lane.agent{background:rgba(138,99,210,.08); border:1px solid rgba(138,99,210,.30)}
+  .tf-lane .yn{font-weight:800; font-size:10.5px; padding:2px 8px; border-radius:6px; background:#00754f; color:#fff}
+  .tf-lane .yn.no{background:#8a5b00}
+  .tf-lane em{margin-left:auto; font-style:normal; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:var(--muted)}
+  .provenote{background:rgba(0,169,114,.10); border:1px solid rgba(0,169,114,.35); border-radius:11px;
+    padding:11px 15px; font-size:12.8px; margin:6px 0 16px; line-height:1.6}
+  .provenote code{background:rgba(0,169,114,.14); padding:1px 6px; border-radius:5px; font-size:11.8px}
+  .gatenote{background:#FFF3D6; border:1px solid #E0A100; border-radius:11px; padding:11px 15px;
+    font-size:12.8px; color:#5c4300; margin-top:16px; line-height:1.6}
+  .gatenote code{background:rgba(224,161,0,.18); padding:1px 6px; border-radius:5px; font-size:11.8px; color:#5c4300}
+
+  footer{background:var(--navy); color:#aebdc2; padding:26px 0; font-size:13px}
+  footer .wrap{display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px}
+
+  @media (max-width:900px){
+    .g4{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:1fr 1fr}
+    .split,.g2{grid-template-columns:1fr} .demo .rows{grid-template-columns:1fr}
+    #connectors{display:none} h1{font-size:30px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span> ReconResolve · Agentic Migration RCA</div>
+    <h1>Every reconciliation mismatch, <span class="accent">explained and fixed</span> — automatically.</h1>
+    <p class="sub">A two-tier root-cause engine that sits after Lakebridge reconcile: a deterministic
+      evidence pass grades every difference as a migration defect vs. a genuine data change, traces it to the
+      exact upstream layer, proposes a validated fix — and hands the residual to an LLM that must confirm with a query.</p>
+    <div class="meta">
+      <span class="pill">Sources: <b>Snowflake · Oracle · Teradata · SQL Server · Synapse</b></span>
+      <span class="pill">Entry points: <b>Genie Code skill · Databricks App · CLI</b></span>
+      <span class="pill">Every verdict <b>backed by an executed query</b></span>
+    </div>
+  </div>
+</header>
+
+<!-- FILTERS -->
+<div class="filters">
+  <div class="wrap row">
+    <span class="lbl">Highlight</span>
+    <button class="chip" data-filter="det" aria-pressed="false"><span class="sw" style="background:var(--green)"></span>Deterministic</button>
+    <button class="chip" data-filter="agent" aria-pressed="false"><span class="sw" style="background:var(--violet)"></span>Agentic / LLM</button>
+    <button class="chip" data-filter="live" aria-pressed="false"><span class="sw" style="background:var(--blue)"></span>Live query</button>
+    <button class="chip" data-filter="lineage" aria-pressed="false"><span class="sw" style="background:var(--amber)"></span>UC lineage</button>
+    <button class="chip" data-filter="code" aria-pressed="false"><span class="sw" style="background:var(--lava)"></span>Code-aware</button>
+    <button class="chip reset" id="reset">Reset</button>
+  </div>
+</div>
+
+<!-- PIPELINE -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The pipeline</div>
+    <h2>Click any stage to see what it does, why, and which file runs it</h2>
+    <p class="lead">One <code>analyze()</code> call chains these passes. Solid arrows = data flow;
+      dashed arrows = feedback loops (fixes trigger a re-reconcile; confirmed causes feed the memory that primes the next run).</p>
+    <div class="legend">
+      <span><span class="ln"></span> data flow</span>
+      <span><span class="ln dash"></span> feedback loop</span>
+      <span>Tags on each card show whether it's deterministic, agentic, hits live data, uses UC lineage, or reads your SQL.</span>
+    </div>
+
+    <div class="flow">
+      <svg id="connectors"></svg>
+      <div class="lanes" id="lanes"></div>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT IT DETECTS -->
+<section style="background:var(--oat-2)">
+  <div class="wrap">
+    <div class="eyebrow">What it detects</div>
+    <h2>Eight deterministic probe families</h2>
+    <p class="lead">Each column difference is fingerprinted by probes (in <code>rca_engine/probes/</code>) and matched to the
+      source dialect's knowledge base (<code>rca_engine/knowledge/&lt;dialect&gt;.yaml</code>).</p>
+    <div class="grid g4" id="detect"></div>
+  </div>
+</section>
+
+<!-- CONFIG REFERENCE -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Everything you can tune</div>
+    <h2>Configuration reference — ~30 knobs, all in one <code>config.yml</code></h2>
+    <p class="lead">The Genie Code skill reads <code>skill/rca-recon/config.yml</code>; the App maps each to an
+      <code>RCA_*</code> env var; the CLI exposes them as flags. Type to filter.</p>
+    <div class="cfg-search">
+      <input id="cfgq" type="text" placeholder="Filter configs…  e.g. lineage, scan, fix, dialect, memory" />
+      <span class="count" id="cfgcount"></span>
+    </div>
+    <div class="cfg-grid" id="cfggroups"></div>
+    <div class="cfg-note">
+      <b>Same settings, three surfaces.</b> &nbsp;
+      Skill → keys in <code>config.yml</code> (or the <code>RCA_CONFIG_JSON</code> override). &nbsp;
+      App → env vars: <code>RCA_RECON_CATALOG</code>, <code>RCA_DIALECT</code>, <code>RCA_WAREHOUSE_ID</code>,
+      <code>RCA_AUDIT_TABLE</code>, <code>RCA_LLM_ENDPOINT</code>, <code>RCA_USE_SKILL_JOB</code>… &nbsp;
+      CLI → flags: <code>--use-lineage</code>, <code>--max-lineage-hops</code>, <code>--table-manifest</code>,
+      <code>--source-scripts</code>, <code>--transpiled-output</code>, <code>--recon-config</code>.
+    </div>
+  </div>
+</section>
+
+<!-- VERDICTS -->
+<section style="background:var(--oat-2)">
+  <div class="wrap">
+    <div class="eyebrow">The judgement</div>
+    <h2>Four verdicts — the migration-vs-genuine call</h2>
+    <p class="lead">The value AVF and plain reconcile can't make for you: is this a defect to fix in the migration, or a real data change to route to the owner?</p>
+    <div class="grid g4">
+      <div class="card verdict mig"><div class="ci">🔧</div><h4>Migration-induced</h4><p>Introduced by the migration/transform (scale loss, tz shift, transpile). <b>Fix in the pipeline.</b></p></div>
+      <div class="card verdict gen"><div class="ci">📊</div><h4>Genuine data difference</h4><p>A real upstream data change (drift, late data). <b>Route to the data owner.</b></p></div>
+      <div class="card verdict ben"><div class="ci">✅</div><h4>Benign / expected</h4><p>Explained & acceptable (e.g. known rounding within tolerance). <b>No action.</b></p></div>
+      <div class="card verdict rev"><div class="ci">🔍</div><h4>Needs review</h4><p>No probe fired with confidence → handed to the live drill-down / LLM tier. <b>Investigate.</b></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- DET vs AGENT -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">How the two tiers divide the work</div>
+    <h2>Deterministic first, agentic only for the residual</h2>
+    <p class="lead">The engine is repeatable and cheap by default. The LLM is a fallback that widens coverage — and it never gets the final word without a confirming query.</p>
+    <div class="split">
+      <div class="panel det"><div class="ph">🧮 Deterministic engine <span style="opacity:.7;font-weight:600;font-size:12px">— always on</span></div>
+        <ul>
+          <li>Probe-based classification into 8 categories + dialect knowledge base</li>
+          <li>Live drill-down queries that <b>confirm</b> each hypothesis on real rows</li>
+          <li>Distribution-drift, depth-agnostic UC lineage trace-back, downstream blast-radius</li>
+          <li>Systemic clustering ("fix one, resolve many")</li>
+          <li>Runnable fix generation + a validation gate that dry-runs the fix</li>
+          <li>Learning-loop memory of confirmed causes; append-only audit trail</li>
+        </ul>
+      </div>
+      <div class="panel agent"><div class="ph">🤖 Agentic tier <span style="opacity:.7;font-weight:600;font-size:12px">— residual only</span></div>
+        <ul>
+          <li>Runs only for <code>needs-review</code> / <code>unknown</code> findings the probes couldn't grade</li>
+          <li>Proposes a hypothesis <b>and a confirming SQL query</b> from the evidence bundle (incl. lineage trace-back)</li>
+          <li>The query is executed; the verdict is promoted <b>only if it confirms</b></li>
+          <li>Authors the grounded plain-English "Analyst summary" in the notebook</li>
+          <li>In Genie Code: the in-workspace agent; in the App: the Foundation Model API</li>
+          <li>Same guarantee as Tier-1: <b>no verdict without an executed query</b></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- OUTPUTS -->
+<section style="background:var(--oat-2)">
+  <div class="wrap">
+    <div class="eyebrow">What you get</div>
+    <h2>Reviewer-ready outputs</h2>
+    <div class="grid g4">
+      <div class="card"><div class="ci">📓</div><h4>RCA notebook</h4><p>Per-table + index notebook: findings, evidence, executed queries, and review-then-run fix cells.</p></div>
+      <div class="card"><div class="ci">🧾</div><h4>SUMMARY.md + JSON</h4><p>Human summary with match-rates & clusters, plus full machine-readable findings.</p></div>
+      <div class="card"><div class="ci">🗂️</div><h4>Audit trail</h4><p>Append-only Delta table: every reconcile & RCA step, who ran it, when, and the outcome.</p></div>
+      <div class="card"><div class="ci">📈</div><h4>App dashboard</h4><p>Run overview, per-table drill-in, match-rates, dialect & catalog pickers, audit page.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- LIVE DEMO -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The use case</div>
+    <h2>Reconciliation flags the symptom — ReconResolve finds the upstream cause</h2>
+    <p class="lead">A retail <b>Orders</b> dataset is migrated Snowflake→Databricks through a layered pipeline
+      (raw → enriched → curated → gold). The team reconciles the two published <b>gold</b> tables against the trusted
+      source. Reconciliation tells you <i>which</i> columns and rows differ — but not <i>why</i>, and not that several
+      "different" columns actually share <b>one upstream cause</b>. That triage is the manual bottleneck this removes.</p>
+
+    <div class="demo-hero">
+      <div><b style="font-size:16px">Reconciled: orders_src &nbsp;vs&nbsp; orders_gold_c &amp; orders_gold_d</b> &nbsp; <span class="rid">recon_id 7d786327137d44c9bef3f2bc75fba518</span></div>
+      <p><b>Only the two gold leaves are reconciled</b> — yet every real defect lives one or two layers upstream. The engine
+        must walk back from the symptom on the leaf to the layer where the difference actually entered.</p>
+      <div class="hero-stats">
+        <div class="s"><b>6 issues</b><span>captured & explained across the two leaves</span></div>
+        <div class="s"><b>2 root causes</b><span>most "issues" collapse to one shared upstream defect</span></div>
+        <div class="s"><b>3 hops</b><span>traced past the leaf to where the difference entered</span></div>
+        <div class="s"><b>0 false positives</b><span>unchanged columns stay clean</span></div>
+      </div>
+    </div>
+
+    <div class="demo-two">
+      <!-- Topology -->
+      <div class="topo">
+        <svg viewBox="0 0 700 340" role="img" aria-label="Diamond pipeline topology">
+          <defs>
+            <marker id="da" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#7d919a"/></marker>
+            <marker id="dr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#FF3621"/></marker>
+          </defs>
+          <!-- edges (data flow) -->
+          <path d="M360,50 L360,78" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M345,136 L250,168" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M375,136 L548,168" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M237,222 L237,256" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M560,222 L560,256" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <!-- reconciled-against (dashed) -->
+          <path d="M126,268 C 150,250 150,278 162,279" stroke="#FF3621" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#dr)"/>
+          <path d="M120,292 C 220,338 430,338 486,300" stroke="#FF3621" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#dr)"/>
+          <!-- nodes -->
+          <g font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+            <!-- src -->
+            <rect x="8" y="250" width="118" height="54" rx="10" fill="#E6F0F7" stroke="#2272B4" stroke-width="1.5"/>
+            <text x="67" y="272" text-anchor="middle" font-size="12" font-weight="700" fill="#1B3139">orders_src</text>
+            <text x="67" y="288" text-anchor="middle" font-size="9.5" fill="#2272B4">source of truth</text>
+            <!-- raw -->
+            <rect x="285" y="8" width="150" height="42" rx="10" fill="#eef2f4" stroke="#1B3139" stroke-width="1.5"/>
+            <text x="360" y="27" text-anchor="middle" font-size="12" font-weight="700" fill="#1B3139">orders_raw</text>
+            <text x="360" y="41" text-anchor="middle" font-size="9.5" fill="#5A6B72">root · clean</text>
+            <!-- enriched (shared defect) -->
+            <rect x="262" y="78" width="196" height="58" rx="12" fill="#FFE9E6" stroke="#FF3621" stroke-width="2"/>
+            <text x="360" y="97" text-anchor="middle" font-size="12.5" font-weight="800" fill="#1B3139">orders_enriched</text>
+            <text x="360" y="112" text-anchor="middle" font-size="10" fill="#c62a1c">⚠ amount  DECIMAL(18,4)→(18,2)</text>
+            <text x="360" y="126" text-anchor="middle" font-size="10" fill="#c62a1c">⚠ order_ts  +5:30 (no UTC)</text>
+            <!-- curated_c -->
+            <rect x="150" y="168" width="175" height="54" rx="11" fill="#FFF3D6" stroke="#E0A100" stroke-width="1.5"/>
+            <text x="237" y="190" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">orders_curated_c</text>
+            <text x="237" y="207" text-anchor="middle" font-size="10" fill="#8a5b00">⚠ sku  lower()+space</text>
+            <!-- curated_d -->
+            <rect x="472" y="168" width="176" height="54" rx="11" fill="#FFF3D6" stroke="#E0A100" stroke-width="1.5"/>
+            <text x="560" y="190" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">orders_curated_d</text>
+            <text x="560" y="207" text-anchor="middle" font-size="10" fill="#8a5b00">⚠ drop  order_id &gt; 470</text>
+            <!-- gold_c -->
+            <rect x="165" y="256" width="145" height="46" rx="11" fill="#E3F6EE" stroke="#00A972" stroke-width="1.7"/>
+            <text x="237" y="276" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">orders_gold_c</text>
+            <text x="237" y="292" text-anchor="middle" font-size="9.5" font-weight="800" fill="#00754f">LEAF E · reconciled</text>
+            <!-- gold_d -->
+            <rect x="488" y="256" width="145" height="46" rx="11" fill="#E3F6EE" stroke="#00A972" stroke-width="1.7"/>
+            <text x="560" y="276" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">orders_gold_d</text>
+            <text x="560" y="292" text-anchor="middle" font-size="9.5" font-weight="800" fill="#00754f">LEAF F · reconciled</text>
+            <!-- dashed legend -->
+            <text x="8" y="322" font-size="9.5" fill="#c62a1c">– – reconciled against each leaf</text>
+          </g>
+        </svg>
+      </div>
+
+      <!-- How the RCA behaves -->
+      <div class="points">
+        <h4>⚙️ How the RCA behaves</h4>
+        <div class="point"><span class="ic">1</span><div><b>Ingest the flagged mismatches</b><p>Reads the reconcile output — the columns/rows that differ on each gold leaf.</p></div></div>
+        <div class="point"><span class="ic">2</span><div><b>Fingerprint each difference</b><p>A probe + the Snowflake knowledge base assign a category (precision, timezone, string, volume…).</p></div></div>
+        <div class="point"><span class="ic">3</span><div><b>Confirm on real rows</b><p>A live drill-down query must agree before any verdict is trusted.</p></div></div>
+        <div class="point"><span class="ic">4</span><div><b>Walk lineage upstream</b><p>Hop by hop past the leaf to the layer where the difference <i>actually entered</i>.</p></div></div>
+        <div class="point"><span class="ic">5</span><div><b>Collapse shared causes</b><p>Differences tracing to the same upstream defect cluster into one root cause.</p></div></div>
+        <div class="point"><span class="ic">6</span><div><b>Cite the code & propose a fix</b><p>Reads the migrated SQL for the exact transform, then suggests a dry-run-validated fix.</p></div></div>
+      </div>
+    </div>
+
+    <!-- What it captures, by feature -->
+    <div class="steps-h">🔍 What it captures — and the feature that catches it</div>
+    <p class="lead" style="margin:6px 0 14px">Read this left-to-right: the <b>symptom</b> the recon flags on a leaf, the
+      <b>feature</b> that captures & explains it, and the <b>upstream layer</b> where the problem really lives.</p>
+    <div style="overflow-x:auto">
+    <table class="ltable">
+      <thead><tr>
+        <th>Symptom on the reconciled leaf</th><th>Category</th><th>Captured &amp; explained by</th>
+        <th>Upstream cause — where it enters</th><th>Verdict / fix</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><code>gold_c.amount</code> &amp; <code>gold_d.amount</code> off by cents</td>
+          <td>🔢 type_precision</td>
+          <td>numeric probe → live drill-down → <b>lineage trace-back</b> → <b>clustering</b> (both leaves) + code-aware cite</td>
+          <td class="up">orders_enriched — <code>cast(amount AS DECIMAL(18,2))</code> (loses 18,4→18,2), 2 hops up</td>
+          <td><span class="badge2 mig">🔧 migration</span></td>
+        </tr>
+        <tr>
+          <td><code>gold_c.order_ts</code> &amp; <code>gold_d.order_ts</code> shifted 5.5h</td>
+          <td>🕐 timezone</td>
+          <td>temporal probe → drill-down → <b>trace-back</b> → clustering + <b>validated fix</b></td>
+          <td class="up">orders_enriched — <code>+ make_interval(…5,30)</code>, no UTC normalization, 2 hops up</td>
+          <td><span class="badge2 mig">🔧 migration</span> · fix <span class="badge2 ok">✅</span></td>
+        </tr>
+        <tr>
+          <td><code>gold_c.sku</code> lower-cased + trailing space</td>
+          <td>🔤 string_format</td>
+          <td>string probe → drill-down → trace-back with <b>distractor isolation</b></td>
+          <td class="up">orders_curated_c — <code>concat(lower(sku),' ')</code>, arm C only (1 hop up)</td>
+          <td><span class="badge2 mig">🔧 migration</span></td>
+        </tr>
+        <tr>
+          <td><code>gold_d</code> — 30 rows missing</td>
+          <td>➖ volume_missing</td>
+          <td>key anti-join → <b>table lineage</b> → back-fill fix</td>
+          <td class="up">orders_curated_d — load watermark drops <code>order_id&gt;470</code>, arm D only</td>
+          <td><span class="badge2 mig">🔧 migration</span> · fix <span class="badge2 ok">✅</span></td>
+        </tr>
+        <tr>
+          <td><code>customer_id · status · region</code> — unchanged</td>
+          <td>—</td>
+          <td>probes + drill-down find no signal → <b>clean control</b></td>
+          <td class="up2">none — untouched through every layer</td>
+          <td><span class="badge2 ok">✅ clean</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="lead" style="margin:14px 0 0"><b>The takeaway:</b> only the two gold tables were reconciled, but <b>none of the six
+      issues originate there.</b> Four of them (both <code>amount</code> + both <code>order_ts</code>) collapse to a
+      <b>single upstream defect in <span class="up">orders_enriched</span></b>; the other two are arm-specific. Fixing one enrichment
+      step clears four findings across two tables — which reconciliation alone could never tell you.</p>
+  </div>
+</section>
+
+<!-- TWO TIERS WORKED EXAMPLE -->
+<section style="background:var(--oat-2)">
+  <div class="wrap">
+    <div class="eyebrow">Deterministic first · agentic fallback · proven live</div>
+    <h2>Two tiers on one payments migration — the mechanical fix vs. the judgement call</h2>
+    <p class="lead">A retail <b>payments</b> table migrates Snowflake → Databricks. Reconciliation flags two
+      columns. One has a clean fingerprint and is graded <b>deterministically</b>; the other is a silent
+      <b>business-logic regression</b> no probe can name, so it is handed to <b>Claude</b>, which proposes a
+      hypothesis <b>and a confirming query</b> — and only promotes the verdict if that query passes.</p>
+
+    <div class="provenote">
+      <b>✅ Verified live</b> — <code>recon_id 9253e330…4803e</code> on
+      <code>mig_demo_payments</code>, Foundation Model endpoint <code>databricks-claude-opus-5</code>.
+      500 rows · join <code>payment_id</code>. Clean controls (<code>customer_id, gross_amount, currency, status</code>)
+      produced no finding.
+    </div>
+
+    <div class="split">
+      <div class="panel det">
+        <div class="ph">🧮 Tier 1 · Deterministic <span class="cap">— payment_ts</span></div>
+        <div class="pc">
+          <div class="cs"><code>payment_ts</code> differs on all 500 rows by a constant +5:30</div>
+          <ul>
+            <li>The temporal <b>probe</b> recognizes the constant, known offset → category <b>timezone</b>.</li>
+            <li>A live <b>drill-down</b> query confirms the shift holds on the flagged rows.</li>
+            <li>Root cause: the migrated load never normalized the session timezone to UTC.</li>
+            <li><b>Fix</b>: "normalize to UTC on load" — a runnable, gate-validated suggestion.</li>
+          </ul>
+          <div class="out">verdict → 🔧 timezone / migration_induced
+no LLM involved · repeatable · cheap · same result every run</div>
+        </div>
+      </div>
+
+      <div class="panel agent">
+        <div class="ph">🤖 Tier 2 · LLM fallback <span class="cap">— net_amount</span></div>
+        <div class="pc">
+          <div class="cs"><code>net_amount</code> differs — but by no offset, rounding, scale, or string pattern</div>
+          <ul>
+            <li>Source rule: <code>net = round(gross×0.90,2)</code> (10% discount). Target shipped
+              <code>round(gross×1.08,2)</code> (8% tax) — ratio ≈ 0.83, <b>not</b> a clean factor.</li>
+            <li>No probe fingerprints it → the deterministic tier is honest: <b>needs-review / unknown</b>.</li>
+            <li>Claude (Opus&nbsp;5) gets the <b>evidence bundle</b> (samples + the migrated derivation), back-solves
+              <b>both</b> formulas, and writes an <b>exact-reconstruction</b> confirming query.</li>
+            <li>The query runs and passes → promoted to <b>transpilation / migration_induced</b>.</li>
+          </ul>
+          <div class="out">Claude's confirming query (executed, returned confirmed=TRUE):
+count_if(NOT (t.net_amount &lt;=&gt; ROUND(s.gross_amount*1.08,2))) = 0   -- target uses ×1.08
+AND count_if(NOT (s.net_amount &lt;=&gt; ROUND(s.gross_amount*0.90,2))) = 0  -- source used ×0.90
+→ 🔧 transpilation / migration_induced — the changed rate constant, query-proven</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gatenote">🔒 <b>The gate held, live:</b> Claude's <i>first</i> hypothesis used a ratio heuristic and
+      its query returned <code>confirmed=FALSE</code> → the finding <b>stayed needs-review</b>. Only the exact
+      reconstruction promoted it. <b>The query is the gate — never an LLM guess.</b></div>
+
+    <!-- decision flow -->
+    <div class="tflow">
+      <div class="hd">
+        <span class="tf-node">Finding</span><span class="tf-arrow">→</span>
+        <span class="tf-dec">◆ does a probe fingerprint it?</span>
+      </div>
+      <div class="tf-lane det"><span class="yn">YES</span> live drill-down confirms it on real rows
+        <span class="tf-arrow">→</span> <b>🔧 verdict</b> <em>Tier 1 · deterministic (payment_ts)</em></div>
+      <div class="tf-lane agent"><span class="yn no">NO</span> Claude proposes a hypothesis + a confirming query
+        <span class="tf-arrow">→</span> ◆ query confirms?
+        <span class="tf-arrow">→</span> <b>🔧 verdict</b> &nbsp;·&nbsp; else <b>🔍 needs-review</b> <em>Tier 2 · agentic (net_amount)</em></div>
+    </div>
+
+    <p class="lead" style="margin:13px 0 0"><b>Why it matters:</b> the timezone bug is a known mechanical defect —
+      caught cheaply and repeatably with zero LLM. The tax-vs-discount regression is exactly the kind of silent,
+      business-logic drift that slips through migrations and manual review; the LLM names it and <i>proves</i> it with
+      an executed query. Deterministic where it can be; agentic where it must be; query-gated always.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>ReconResolve · Agentic RCA for Lakebridge migrations</span>
+    <span>Deterministic-first · agentic-fallback · every verdict query-backed</span>
+  </div>
+</footer>
+
+<!-- DRAWER -->
+<div class="backdrop" id="backdrop"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dh">
+    <button class="close" id="dclose" aria-label="Close">×</button>
+    <div class="ico" id="d-ico">⚙️</div>
+    <div class="kicker" id="d-kicker">Stage</div>
+    <h3 id="d-title">—</h3>
+  </div>
+  <div class="db" id="d-body"></div>
+</aside>
+
+<script>
+/* ---------------------------------------------------------------------------
+ * Stage data — grounded in the repo. tags: input|det|agent|live|lineage|code
+ * -------------------------------------------------------------------------*/
+const STAGES = [
+  {id:"entry-skill", num:"", ico:"💬", title:"Genie Code skill", lane:"entry", tags:["input","agent"],
+    kicker:"Entry point", short:"In-workspace agent reads SKILL.md and drives the run.",
+    what:"The open Agent-Skills entry point. Inside a Databricks notebook, Genie Code reads <code>SKILL.md</code>, then calls the vendored engine to reconcile and/or run the RCA — and adds the agentic narrative + adaptive queries on top.",
+    why:"Zero-install, interactive: the analyst just gives a recon_id (or table pairs) in natural language.",
+    files:["skill/rca-recon/SKILL.md","skill/rca-recon/scripts/run_rca.py","skill/rca-recon/config.yml"]},
+  {id:"entry-app", num:"", ico:"🖥️", title:"Databricks App", lane:"entry", tags:["input","live"],
+    kicker:"Entry point", short:"Trigger recon, browse runs, drill into dashboards.",
+    what:"A React + FastAPI app: trigger a reconciliation (auto join-key detection), list runs, open a run dashboard, run full or single-table RCA, and view the audit trail. Uses the Foundation Model API for the Tier-2 fallback.",
+    why:"A no-code surface for teams who don't live in notebooks.",
+    files:["app/server/rca_service.py","app/server/routes/api.py","app/server/llm_fallback.py"]},
+  {id:"entry-cli", num:"", ico:"⌨️", title:"Local CLI", lane:"entry", tags:["input"],
+    kicker:"Entry point", short:"python -m rca_engine.cli --recon-id …",
+    what:"The same engine from a terminal — ideal for CI and scripted validation. Accepts the recon config, transpiled output, source scripts and a per-table manifest for code-aware RCA.",
+    why:"Reproducible, automatable, and used by the scenario validation harness.",
+    files:["rca_engine/cli.py","scripts/validate_scenarios.py"]},
+
+  {id:"reconcile", num:"1", ico:"🔀", title:"Reconcile (optional)", lane:"main", tags:["input","live"],
+    kicker:"Stage 1", short:"App-native compare, or consume Lakebridge output.",
+    what:"If you don't have a recon_id yet, the app-native engine compares source vs target on the warehouse: auto-detects join keys (id / *_id / id+date candidates), handles column mapping, isolates errors, and writes Lakebridge-compatible <code>main / metrics / details</code>.",
+    why:"Removes the manual Lakebridge config step and always yields a real recon_id to analyze.",
+    files:["rca_engine/reconcile.py"]},
+  {id:"ingest", num:"2", ico:"📥", title:"Ingest recon output", lane:"main", tags:["det"],
+    kicker:"Stage 2", short:"Read main / metrics / details → Findings.",
+    what:"Reads the reconciliation tables and builds a <code>Finding</code> per mismatched column and per missing/extra-row set, with fully-qualified table names and sampled example rows.",
+    why:"Normalizes any recon source (Lakebridge or app-native) into one model the passes operate on.",
+    files:["rca_engine/ingest.py","rca_engine/models.py"]},
+  {id:"classify", num:"3", ico:"🔬", title:"Classify (probes + KB)", lane:"main", tags:["det","code"],
+    kicker:"Stage 3", short:"Fingerprint each difference; match the dialect KB.",
+    what:"Runs the probe families (numeric, temporal, string, null/boolean, complex/semi-structured, volume, transpilation) over the sampled values and matches the source dialect's knowledge base to assign a category, confidence and remediation.",
+    why:"This is the deterministic heart — repeatable categorization with no LLM.",
+    files:["rca_engine/classify.py","rca_engine/probes/","rca_engine/knowledge/"]},
+  {id:"codeaware", num:"3b", ico:"🧩", title:"Code-aware correlation", lane:"main", tags:["det","code"],
+    kicker:"Stage 3b · optional", short:"sqlglot reads your source & target SQL.",
+    what:"When you supply source (original-dialect) and target (migrated) scripts via a manifest, sqlglot parses per-column derivations and declared types, then cites the exact transform that caused a mismatch (e.g. <code>cast(amount AS DECIMAL(18,2))</code>, <code>+ 5:30</code>).",
+    why:"Turns 'the values differ' into 'this line of SQL did it' — the strongest possible evidence.",
+    files:["rca_engine/lakebridge.py","migration/demo_diamond/table_manifest.yml"]},
+  {id:"drilldown", num:"4", ico:"🔎", title:"Live drill-down", lane:"main", tags:["det","live"],
+    kicker:"Stage 4", short:"Confirm each hypothesis on real rows.",
+    what:"Issues targeted confirming queries (scoped to flagged keys by default) — e.g. 'do values match after rounding to scale 2?' — and promotes a verdict only when the query agrees.",
+    why:"No verdict is trusted on a probe alone; the data has to back it.",
+    files:["rca_engine/drilldown.py","rca_engine/scan.py"]},
+  {id:"drift", num:"5", ico:"📉", title:"Distribution drift", lane:"enrich", tags:["det","live"],
+    kicker:"Stage 5 · enrichment", short:"Quantify null-rate / cardinality / numeric shift.",
+    what:"For each column mismatch, measures the source-vs-target null-rate, cardinality and numeric summary. A stable distribution points to precision/migration; a material shift points to a genuine upstream change.",
+    why:"Sharpens the migration-vs-genuine verdict beyond value equality.",
+    files:["rca_engine/drift.py"]},
+  {id:"lineage", num:"6", ico:"🧭", title:"UC lineage trace-back", lane:"enrich", tags:["det","lineage","live"],
+    kicker:"Stage 6 · enrichment", short:"Walk upstream, hop by hop, to the root layer.",
+    what:"Depth-agnostic: from the reconciled leaf it walks <code>system.access.column_lineage</code> (then table lineage) hop by hop to the roots, so a defect injected N layers upstream is pointed at directly — not just the target.",
+    why:"In the demo it pins the amount/tz defect to <b>orders_enriched</b>, 2 hops above the reconciled leaf.",
+    files:["rca_engine/lineage.py"]},
+  {id:"blast", num:"7", ico:"💥", title:"Downstream blast-radius", lane:"enrich", tags:["det","lineage","live"],
+    kicker:"Stage 7 · enrichment", short:"Which tables consume this one?",
+    what:"For each affected target, lists the downstream tables that consume it (via table lineage) so a fix is prioritized by how far the defect propagates.",
+    why:"Answers 'if I don't fix this, what else is wrong?'",
+    files:["rca_engine/lineage.py"]},
+  {id:"cluster", num:"8", ico:"🧨", title:"Systemic clustering", lane:"main", tags:["det"],
+    kicker:"Stage 8", short:"Fix one, resolve many.",
+    what:"Groups findings that share one mechanism (a mistranslated expression, one category concentrated in a table, a shared upstream root) into clusters so the report leads with the single fix that clears the most.",
+    why:"In the demo, amount+order_ts across both leaves collapse into 2 root causes, not 4 tickets.",
+    files:["rca_engine/cluster.py"]},
+  {id:"fixes", num:"9", ico:"🛠️", title:"Fix + validation gate", lane:"main", tags:["det","live"],
+    kicker:"Stage 9", short:"Runnable remediation, dry-run confirmed.",
+    what:"Attaches a concrete, runnable fix (corrected transform, back-fill/de-dupe load, or recon-config change). The validation gate dry-runs the fix's query and marks it <b>✅ validated</b> only when it fully closes the gap.",
+    why:"Ships a fix you can review-then-run — several already proven to close the gap.",
+    files:["rca_engine/fixgen.py"]},
+  {id:"llm", num:"10", ico:"🤖", title:"LLM Tier-2 fallback", lane:"main", tags:["agent","live"],
+    kicker:"Stage 10 · residual only", short:"Hypothesis + confirming query, execution-gated.",
+    what:"For findings the probes left as needs-review/unknown, the LLM proposes a cause AND a SQL query from the evidence bundle (prior evidence + lineage trace-back). The query runs; the verdict is promoted only if it confirms. Also authors the grounded analyst summary.",
+    why:"Widens coverage without loosening the 'query-backed verdict' rule.",
+    files:["rca_engine/resolve.py","rca_engine/synthesize.py","app/server/llm_fallback.py"]},
+  {id:"memory", num:"11", ico:"🧠", title:"Learning-loop memory", lane:"main", tags:["det"],
+    kicker:"Stage 11", short:"Remember confirmed causes for next time.",
+    what:"Records every query-confirmed cause into an append-only Delta table keyed by a mechanism signature (dialect + category + translated funcs / scale delta). Next run, a matching recurring cause is proposed early — then still confirmed by a query.",
+    why:"The same mistranslation auto-classifies on the next migration.",
+    files:["rca_engine/memory.py"]},
+  {id:"output", num:"12", ico:"📓", title:"Outputs + audit", lane:"main", tags:["det"],
+    kicker:"Stage 12", short:"Notebook, JSON, SUMMARY.md, audit table.",
+    what:"Renders the reviewer-ready RCA notebook (per-table + index), full JSON, a SUMMARY.md with match-rates and clusters, and logs each step to the append-only audit trail.",
+    why:"Sign-off artifact: every step in an audit trail, every verdict backed by an executed query.",
+    files:["rca_engine/report.py","rca_engine/audit.py"]},
+];
+
+const DETECT = [
+  {ico:"🔢", t:"type_precision", d:"Numeric scale / precision loss.", how:"values equal after rounding to N scales", ex:"NUMBER(18,4) → DECIMAL(18,2): 21.7777 → 21.78"},
+  {ico:"🕐", t:"timezone", d:"Constant time-offset shifts.", how:"parses both ts; flags a constant known offset", ex:"+5:30 with no UTC normalization (TIMESTAMP_LTZ)"},
+  {ico:"🔤", t:"string_format", d:"Case, trim, collation, encoding.", how:"equal after Unicode NFC + trim + case-fold", ex:"SKU-0007 → 'sku-0007 ' (lower + trailing space)"},
+  {ico:"✔️", t:"null_boolean", d:"NULL handling & boolean mapping.", how:"NULL↔value and Y/N/1/0 ↔ true/false patterns", ex:"'Y'/'N' → true/false/NULL mismatches"},
+  {ico:"🧬", t:"semi_structured", d:"VARIANT / JSON representation.", how:"parse JSON; compare keys/types, ignore formatting", ex:"key order, type coercion in nested fields"},
+  {ico:"➖", t:"volume_missing / extra", d:"Row-count losses & duplicates.", how:"anti-join on keys; count source-only / target-only / dup", ex:"load watermark drops late rows; dup keys"},
+  {ico:"🔧", t:"transpilation", d:"Function-translation differences.", how:"match known function diffs from the dialect KB", ex:"DATE_TRUNC week start, ROUND mode, SPLIT_PART"},
+  {ico:"📊", t:"upstream_drift", d:"Genuine distribution change.", how:"compare null-rate / cardinality / numeric summary", ex:"null-rate jump / cardinality shift upstream"},
+];
+
+/* ---- config reference (grounded in skill/rca-recon/config.yml) ---- */
+const CONFIG_GROUPS = [
+  {name:"Location & output", ico:"📍", keys:[
+    {k:"recon_catalog", def:"fevm_…_catalog", d:"Catalog holding the reconcile output (main / metrics / details).",
+      vals:["any Unity Catalog name"]},
+    {k:"recon_schema", def:"reconcile", d:"Schema for the Lakebridge / app-native recon tables.",
+      vals:["any schema name"]},
+    {k:"warehouse_id", def:"—", d:"SQL warehouse for local/CLI runs (Genie Code uses the notebook's Spark session).",
+      vals:["warehouse id (hex)","\"\" (in Genie Code)"]},
+    {k:"output_dir", def:"rca_notebooks", d:"Where the RCA notebook + JSON land. A bare name goes under your workspace home; an absolute path is used as-is.",
+      vals:["bare folder name","/Workspace/Users/<you>/…","/Workspace/Shared/…","/Volumes/<cat>/<sch>/<vol>","/tmp"]},
+    {k:"combined_notebook", def:"false", d:"Also emit one single-scroll notebook with every table's findings.",
+      vals:["true","false"]},
+  ]},
+  {name:"Source dialect", ico:"🗄️", keys:[
+    {k:"dialect", def:"snowflake", d:"Source EDW dialect → picks the knowledge base. Unknown dialects still run on generic probes.",
+      vals:["snowflake","oracle","teradata","mssql","synapse"]},
+    {k:"source_schema", def:"mig_source_sim", d:"Source schema for the reconcile step (only when there's no recon_id yet).",
+      vals:["any schema name"]},
+    {k:"target_schema", def:"mig_target", d:"Target (migrated) schema for the reconcile step.",
+      vals:["any schema name"]},
+  ]},
+  {name:"Code-aware RCA", ico:"🧩", keys:[
+    {k:"recon_config_path", def:"(off)", d:"Lakebridge reconcile config JSON — join keys, column mappings, filters.",
+      vals:["path to .json","unset"]},
+    {k:"transpiled_output_dir", def:"(off)", d:"TARGET scripts — the transpiled Databricks SQL folder.",
+      vals:["folder path","single .sql","unset"]},
+    {k:"source_scripts_dir", def:"(off)", d:"SOURCE scripts — original-dialect DDL (declared types e.g. NUMBER(18,4)).",
+      vals:["folder path","single .sql","unset"]},
+    {k:"transpile_error_file", def:"(off)", d:"Lakebridge transpile error report, surfaced against affected columns.",
+      vals:["file path","unset"]},
+    {k:"tables", def:"(off)", d:"Per-table manifest — most robust, no file↔table ambiguity. Each item ties a target to its source & migrated SQL.",
+      vals:["YAML list of {target, source, source_script, target_script, join_keys[], date_column}"]},
+  ]},
+  {name:"Lineage & blast-radius", ico:"🧭", keys:[
+    {k:"use_uc_lineage", def:"false", d:"Turn on UC lineage + the depth-agnostic upstream trace-back to the root layer.",
+      vals:["true","false"]},
+    {k:"max_lineage_hops", def:"10", d:"Safety budget on the trace-back walk depth (stops at roots anyway).",
+      vals:["integer ≥ 1"]},
+    {k:"blast_radius", def:"= use_uc_lineage", d:"List downstream tables that consume each affected target. Omit to follow use_uc_lineage.",
+      vals:["true","false","unset (follows use_uc_lineage)"]},
+  ]},
+  {name:"Drift & scan scoping", ico:"📉", keys:[
+    {k:"distribution_drift", def:"true", d:"Measure source-vs-target null-rate / cardinality / numeric shift per column finding.",
+      vals:["true","false"]},
+    {k:"scan_mode", def:"scoped", d:"scoped = bind live queries to flagged keys + a partition window; full = unbounded full-table scans.",
+      vals:["scoped","full"]},
+    {k:"scan_partition_column", def:"(blank)", d:"Partition/date column on both sides → window the drift/volume aggregates.",
+      vals:["column name","\"\" (skip)"]},
+    {k:"scan_date_start / scan_date_end", def:"(blank)", d:"The date window used for scoped aggregates.",
+      vals:["\"YYYY-MM-DD\"","\"\" (skip)"]},
+    {k:"scan_max_keys", def:"500", d:"Cap on flagged keys pushed into an IN (…) confirming predicate (keeps SQL bounded).",
+      vals:["integer (e.g. 100–5000)"]},
+  ]},
+  {name:"Fixes", ico:"🛠️", keys:[
+    {k:"suggest_fixes", def:"true", d:"Attach a concrete runnable remediation to each finding whose category has one.",
+      vals:["true","false"]},
+    {k:"validate_fixes", def:"true", d:"Dry-run each fix's validation query; mark it ✅ validated only when it fully closes the gap.",
+      vals:["true","false"]},
+  ]},
+  {name:"Learning loop & audit", ico:"🧠", keys:[
+    {k:"use_memory", def:"false", d:"Load priors from confirmed runs (proposed, then still query-confirmed) and record new confirmed causes.",
+      vals:["true","false"]},
+    {k:"memory_table", def:"…rca_genie_memory", d:"Delta table backing the learning loop.",
+      vals:["\"\" (default name)","catalog.schema.table","off"]},
+    {k:"audit_table", def:"…rca_genie_audit", d:"Append-only audit of every reconcile/RCA step.",
+      vals:["\"\" (default name)","catalog.schema.table","off"]},
+  ]},
+  {name:"Agentic (LLM)", ico:"🤖", keys:[
+    {k:"llm_synthesis", def:"true", d:"Interactive Genie Code only: author the grounded analyst summary + adaptive drill-down queries. Verdicts stay query-gated.",
+      vals:["true","false"]},
+  ]},
+];
+/* which config keys are most relevant to each pipeline stage (shown in the drawer) */
+const CONFIG_BY_STAGE = {
+  reconcile:["source_schema","target_schema","warehouse_id"],
+  ingest:["recon_catalog","recon_schema"],
+  classify:["dialect"],
+  codeaware:["recon_config_path","transpiled_output_dir","source_scripts_dir","transpile_error_file","tables"],
+  drilldown:["scan_mode","scan_max_keys","scan_partition_column"],
+  drift:["distribution_drift","scan_date_start / scan_date_end"],
+  lineage:["use_uc_lineage","max_lineage_hops"],
+  blast:["blast_radius"],
+  fixes:["suggest_fixes","validate_fixes"],
+  llm:["llm_synthesis"],
+  memory:["use_memory","memory_table"],
+  output:["output_dir","combined_notebook","audit_table"],
+};
+
+/* per-stage example output (real lines from the diamond demo run) */
+const EXAMPLE_BY_STAGE = {
+  "entry-skill":`Prompt: "Run RCA on recon_id 7d786327…; for orders_gold_c.amount\nshow the upstream lineage trace-back and propose a fix."`,
+  "entry-app":`POST /api/recon/trigger {source_schema, target_schema, pairs}\n→ recon_id 7d786327…  →  GET /api/runs/{id}  (dashboard)`,
+  "entry-cli":`python -m rca_engine.cli --recon-id 7d786327… \\\n  --recon-catalog fevm_…_catalog --recon-schema reconcile \\\n  --use-lineage --table-manifest migration/demo_diamond/table_manifest.yml`,
+  reconcile:`recon_id 7d786327137d44c9bef3f2bc75fba518\norders_src → orders_gold_c / orders_gold_d   join: order_id (provided)`,
+  ingest:`6 findings across 2 pairs:\n gold_c.amount · gold_c.order_ts · gold_c.sku\n gold_d.amount · gold_d.order_ts · gold_d (30 missing rows)`,
+  classify:`orders_gold_c.amount → 🔢 type_precision (98%)\n "values equal after rounding to scale 2 — likely NUMBER(p,s) → lower s"`,
+  codeaware:`cites target transform:\n  amount   ← cast(amount AS DECIMAL(18,2))\n  order_ts ← order_ts + make_interval(0,0,0,0,5,30,0)`,
+  drilldown:`confirm (scoped to flagged keys):\n  round(src.amount,2) = tgt.amount  →  TRUE  →  verdict promoted 🔧`,
+  drift:`amount: src stddev≈ tgt stddev, null-rate 0%↔0%\n  → stable distribution ⇒ precision, not a genuine data change`,
+  lineage:`Lineage trace-back (3 hops to root orders_raw):\n gold_c.amount ← curated_c.amount ← enriched.amount ← raw.amount\n ⇒ defect entered at orders_enriched`,
+  blast:`Blast radius: orders_enriched feeds curated_c, curated_d,\n gold_c, gold_d — prioritize the fix & re-validate consumers`,
+  cluster:`Cluster "SQL translation via cast" — 🔢 type_precision\n 2 findings · 961 rows · gold_c.amount, gold_d.amount`,
+  fixes:`order_ts → "Normalize to UTC on load"        ✅ validated (70%)\n amount   → "match source precision/scale"     suggested (50%)\n missing  → "back-fill filtered rows"           ✅ validated (60%)`,
+  llm:`residual order_ts (before tz-probe fix):\n LLM: "constant +5:30 offset?" + confirming query → TRUE\n → promoted to 🕐 timezone / migration_induced`,
+  memory:`records signature: snowflake | type_precision | scale_delta=2\n → next migration auto-proposes this cause (still query-confirmed)`,
+  output:`rca_7d786327…/\n  00_index.ipynb · orders_gold_c.ipynb · orders_gold_d.ipynb\n  rca_7d786327….json · SUMMARY.md   + audit rows appended`,
+};
+
+/* connector edges: [from, to, dashed?] */
+const EDGES = [
+  ["entry-skill","reconcile"],["entry-app","reconcile"],["entry-cli","reconcile"],
+  ["reconcile","ingest"],["ingest","classify"],["classify","codeaware"],["codeaware","drilldown"],
+  ["drilldown","drift"],["drilldown","lineage"],["drilldown","blast"],
+  ["drift","cluster"],["lineage","cluster"],["blast","cluster"],
+  ["cluster","fixes"],["fixes","llm"],["llm","memory"],["memory","output"],
+  ["fixes","reconcile","dash"],      // apply fix → re-reconcile
+  ["memory","classify","dash"],      // learned priors → next classify
+];
+
+/* ---- render lanes ---- */
+const lanes = document.getElementById("lanes");
+const laneOrder = ["entry","reconcile","ingest","classify","codeaware","drilldown","enrich","cluster","fixes","llm","memory","output"];
+const laneDefs = {
+  entry:{cls:"entry"}, enrich:{}
+};
+function nodeCard(s){
+  const tagHtml = s.tags.map(t=>{
+    const map={input:["t-input","Input"],det:["t-det","Deterministic"],agent:["t-agent","Agentic"],
+      live:["t-live","Live query"],lineage:["t-lineage","UC lineage"],code:["t-code","Code-aware"]};
+    const [c,l]=map[t]; return `<span class="tag ${c}">${l}</span>`;
+  }).join("");
+  const num = s.num ? `<span class="num">${s.num}</span>` : "";
+  return `<div class="node" id="${s.id}" data-tags="${s.tags.join(' ')}">
+    ${num}
+    <div class="top"><span class="ico">${s.ico}</span><h4>${s.title}</h4></div>
+    <p>${s.short}</p><div class="tags">${tagHtml}</div></div>`;
+}
+// entry lane (3 nodes)
+const entryLane = document.createElement("div"); entryLane.className="lane entry";
+entryLane.innerHTML = `<div class="lane-note">Pick any entry point ↓</div>` +
+  STAGES.filter(s=>s.lane==="entry").map(nodeCard).join("") ;
+lanes.appendChild(entryLane);
+// helper to add a single-node lane
+function addLane(idList, extraClass=""){
+  const l=document.createElement("div"); l.className="lane "+extraClass;
+  l.innerHTML = idList.map(id=>nodeCard(STAGES.find(s=>s.id===id))).join("");
+  lanes.appendChild(l);
+}
+addLane(["reconcile"]); addLane(["ingest"]); addLane(["classify"]); addLane(["codeaware"]);
+addLane(["drilldown"]);
+addLane(["drift","lineage","blast"],"enrich");   // enrichment row (3 across)
+addLane(["cluster"]); addLane(["fixes"]); addLane(["llm"]); addLane(["memory","output"]);
+
+/* ---- detect grid ---- */
+document.getElementById("detect").innerHTML = DETECT.map(d=>
+  `<div class="card" data-tags="det"><div class="ci">${d.ico}</div><h4>${d.t}</h4><p>${d.d}</p>`+
+  `<p style="margin-top:7px;font-size:11.5px"><b style="color:var(--green)">How:</b> ${d.how}</p>`+
+  `<div class="ex">${d.ex}</div></div>`).join("");
+
+/* ---- config reference render + search ---- */
+const cfgGroups=document.getElementById("cfggroups");
+let cfgTotal=0;
+cfgGroups.innerHTML = CONFIG_GROUPS.map(g=>{
+  const rows=g.keys.map(x=>{ cfgTotal++;
+    const vals=(x.vals||[]);
+    const valsHtml = vals.length
+      ? `<div class="vals"><span class="vlbl">Values</span>${vals.map(v=>`<code>${v}</code>`).join("")}</div>` : "";
+    const q=(x.k+' '+x.d+' '+vals.join(' ')).toLowerCase();
+    return `<div class="cfg-row" data-q="${q}">
+      <div class="k"><code>${x.k}</code><span class="def">default: ${x.def}</span></div>
+      <p>${x.d}</p>${valsHtml}</div>`;
+  }).join("");
+  return `<div class="cfg-group"><h4>${g.ico} ${g.name}</h4>${rows}</div>`;
+}).join("");
+const cfgCount=document.getElementById("cfgcount");
+function cfgFilter(q){
+  q=(q||"").trim().toLowerCase(); let shown=0;
+  document.querySelectorAll(".cfg-group").forEach(g=>{
+    let any=false;
+    g.querySelectorAll(".cfg-row").forEach(r=>{
+      const m=!q || r.dataset.q.includes(q);
+      r.classList.toggle("hide",!m); if(m){any=true;shown++;}
+    });
+    g.classList.toggle("hide",!any);
+  });
+  cfgCount.textContent = q ? `${shown} of ${cfgTotal} settings` : `${cfgTotal} settings`;
+}
+document.getElementById("cfgq").addEventListener("input",e=>cfgFilter(e.target.value));
+cfgFilter("");
+
+/* ---- drawer ---- */
+const drawer=document.getElementById("drawer"), backdrop=document.getElementById("backdrop");
+function openStage(s){
+  document.querySelectorAll(".node").forEach(n=>n.classList.toggle("active",n.id===s.id));
+  document.getElementById("d-ico").textContent=s.ico;
+  document.getElementById("d-kicker").textContent=s.kicker;
+  document.getElementById("d-title").textContent=s.title;
+  const tagHtml=s.tags.map(t=>({input:"Input",det:"Deterministic",agent:"Agentic / LLM",live:"Live query",lineage:"UC lineage",code:"Code-aware"}[t])).join(" · ");
+  const cfgKeys=CONFIG_BY_STAGE[s.id]||[];
+  const cfgHtml = cfgKeys.length
+    ? `<h5>Config keys</h5><div class="cfgkeys">${cfgKeys.map(k=>`<code>${k}</code>`).join("")}</div>` : "";
+  const ex=EXAMPLE_BY_STAGE[s.id];
+  const exHtml = ex ? `<h5>Example output</h5><div class="ex-out">${ex.replace(/</g,"&lt;")}</div>` : "";
+  document.getElementById("d-body").innerHTML=
+    `<h5>What it does</h5><p>${s.what}</p>`+
+    `<h5>Why it matters</h5><p>${s.why}</p>`+
+    exHtml+
+    `<h5>Type</h5><p>${tagHtml}</p>`+
+    cfgHtml+
+    `<h5>Runs in</h5><div class="files">${s.files.map(f=>`<code>${f}</code>`).join("")}</div>`;
+  drawer.classList.add("open"); backdrop.classList.add("open"); drawer.setAttribute("aria-hidden","false");
+}
+function closeDrawer(){drawer.classList.remove("open"); backdrop.classList.remove("open");
+  drawer.setAttribute("aria-hidden","true"); document.querySelectorAll(".node.active").forEach(n=>n.classList.remove("active"));}
+document.getElementById("dclose").onclick=closeDrawer; backdrop.onclick=closeDrawer;
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeDrawer();});
+document.querySelectorAll(".node").forEach(n=>n.onclick=()=>openStage(STAGES.find(s=>s.id===n.id)));
+
+/* ---- filters ---- */
+let active=new Set();
+function applyFilter(){
+  const on=active.size>0;
+  document.querySelectorAll(".node").forEach(n=>{
+    const tags=(n.dataset.tags||"").split(" ");
+    const match=[...active].every(f=>tags.includes(f)); // AND semantics
+    n.classList.toggle("dim", on && !match);
+  });
+  drawEdges();
+}
+document.querySelectorAll(".chip[data-filter]").forEach(c=>{
+  c.onclick=()=>{const f=c.dataset.filter;
+    if(active.has(f)){active.delete(f);c.setAttribute("aria-pressed","false");}
+    else{active.add(f);c.setAttribute("aria-pressed","true");}
+    applyFilter();};
+});
+document.getElementById("reset").onclick=()=>{active.clear();
+  document.querySelectorAll(".chip[data-filter]").forEach(c=>c.setAttribute("aria-pressed","false"));applyFilter();};
+
+/* ---- SVG connectors ---- */
+const svg=document.getElementById("connectors");
+const flow=document.querySelector(".flow");
+function center(el,root){const r=el.getBoundingClientRect(),b=root.getBoundingClientRect();
+  return {x:r.left-b.left+r.width/2, top:r.top-b.top, bottom:r.top-b.top+r.height, cx:r.left-b.left+r.width/2};}
+function drawEdges(){
+  const b=flow.getBoundingClientRect();
+  svg.setAttribute("width",b.width); svg.setAttribute("height",b.height);
+  svg.setAttribute("viewBox",`0 0 ${b.width} ${b.height}`);
+  let defs=`<defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#7d919a"/></marker>
+    <marker id="ahd" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#FF3621"/></marker></defs>`;
+  let paths="";
+  EDGES.forEach(([f,t,dash])=>{
+    const ef=document.getElementById(f), et=document.getElementById(t); if(!ef||!et)return;
+    const dim = ef.classList.contains("dim")||et.classList.contains("dim");
+    const rf=ef.getBoundingClientRect(), rt=et.getBoundingClientRect();
+    const x1=rf.left-b.left+rf.width/2, y1=rf.top-b.top+rf.height;
+    const x2=rt.left-b.left+rt.width/2, y2=rt.top-b.top;
+    let d,stroke,marker,dashArr="";
+    if(dash){ // feedback loop: route out to the side with a curve
+      const side = (t==="reconcile")? (Math.min(x1,x2)-170) : (Math.max(x1,x2)+170);
+      d=`M ${x1} ${y1-rf.height/2} C ${side} ${y1}, ${side} ${y2}, ${x2} ${y2+rt.height/2}`;
+      stroke="#FF3621"; marker="url(#ahd)"; dashArr='stroke-dasharray="6 5"';
+    } else {
+      const my=(y1+y2)/2;
+      d=`M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+      stroke="#7d919a"; marker="url(#ah)";
+    }
+    paths+=`<path d="${d}" fill="none" stroke="${stroke}" stroke-width="2" ${dashArr}
+      marker-end="${marker}" opacity="${dim?0.12:0.85}"/>`;
+  });
+  svg.innerHTML=defs+paths;
+}
+window.addEventListener("resize",drawEdges);
+window.addEventListener("load",()=>{drawEdges(); setTimeout(drawEdges,300);});
+drawEdges();
+</script>
+</body>
+</html>

@@ -17,6 +17,8 @@ All objects live in the existing catalog `fevm_ps_dr_us_east_2_catalog`
 | `mig_source_sim` | Simulated Snowflake source (source of truth) |
 | `mig_target` | Migrated Databricks target (dims, facts, gold) |
 | `mig_multilayer` | Multi-layer lineage bed (raw → stg → curated → gold) for the trace-back |
+| `mig_demo_diamond` | Flagship diamond bed (shared node fans out to two leaves) — clustering, blast-radius, trace-back |
+| `mig_demo_payments` | Two-tiers bed — deterministic (timezone) + LLM fallback (business-logic drift) |
 | `reconcile` | Lakebridge reconcile metadata + output tables |
 
 ## Layout
@@ -37,6 +39,8 @@ migration/
   edge_cases/                           # comprehensive edge-case source + target tables
   pilot/                                # authentic pilot migration scripts (see below)
   multilayer/                           # multi-layer lineage bed for the depth-agnostic trace-back
+  demo_diamond/                         # flagship diamond bed (clustering, blast-radius, trace-back)
+  demo_payments/                        # two-tiers bed (deterministic timezone + LLM-fallback business drift)
 ```
 
 ## Multi-layer lineage bed (`multilayer/`)

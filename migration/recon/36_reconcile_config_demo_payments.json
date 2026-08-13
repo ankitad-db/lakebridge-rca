@@ -1,0 +1,6 @@
+{
+  "tables": [
+    { "source_name": "payments_src", "target_name": "payments_gold", "join_columns": ["payment_id"] }
+  ],
+  "version": 2
+}

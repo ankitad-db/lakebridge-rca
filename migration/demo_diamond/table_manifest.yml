@@ -1,0 +1,27 @@
+# Demo-diamond per-table manifest — ties each reconciled LEAF to its Snowflake SOURCE
+# script and its migrated Databricks TARGET script. This feeds the RCA's code-aware
+# correlation (sqlglot): it reads declared source types from the source script and the
+# per-column derivations from the target script, then cites the exact transform that
+# produced each mismatch (e.g. `cast(amount AS DECIMAL(18,2))`).
+#
+# Use it either:
+#   - in the skill's config.yml as the `tables:` block, or
+#   - via the CLI: `python -m rca_engine.cli ... --table-manifest migration/demo_diamond/table_manifest.yml`
+#
+# Both leaves share the same source-of-truth script (orders_src) but have different
+# target derivations (arm C vs arm D).
+
+tables:
+  - target: orders_gold_c            # LEAF E (arm C)
+    source: orders_src
+    source_script: migration/demo_diamond/source_snowflake/orders_src.sql
+    target_script: migration/demo_diamond/target_databricks/orders_gold_c.sql
+    join_keys: [order_id]
+    date_column: order_ts
+
+  - target: orders_gold_d            # LEAF F (arm D)
+    source: orders_src
+    source_script: migration/demo_diamond/source_snowflake/orders_src.sql
+    target_script: migration/demo_diamond/target_databricks/orders_gold_d.sql
+    join_keys: [order_id]
+    date_column: order_ts

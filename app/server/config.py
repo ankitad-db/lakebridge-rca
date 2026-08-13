@@ -75,7 +75,7 @@ def load_settings() -> Settings:
         target_schema=os.environ.get("RCA_TARGET_SCHEMA", ""),
         audit_table=_resolve_audit_table(recon_catalog, recon_schema),
         llm_fallback=os.environ.get("RCA_LLM_FALLBACK", "").lower() in ("1", "true", "yes"),
-        llm_endpoint=os.environ.get("RCA_LLM_ENDPOINT", "databricks-meta-llama-3-3-70b-instruct"),
+        llm_endpoint=os.environ.get("RCA_LLM_ENDPOINT", "databricks-claude-opus-5"),
         use_skill_job=os.environ.get("RCA_USE_SKILL_JOB", "").lower() in ("1", "true", "yes"),
         skill_notebook=os.environ.get("RCA_SKILL_NOTEBOOK", ""),
         skill_dir=os.environ.get("RCA_SKILL_DIR", ""),

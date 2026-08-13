@@ -1,0 +1,17 @@
+# Demo-payments per-table manifest — ties the reconciled LEAF to its Snowflake SOURCE
+# script and its migrated Databricks TARGET script. Feeds the RCA's code-aware correlation
+# (sqlglot) and the LLM fallback's evidence bundle: the source declares NET_AMOUNT =
+# GROSS_AMOUNT * 0.90 (10% discount), the target derives round(gross_amount * 1.08, 2)
+# (8% tax) — so the model can cite the exact transform that changed the business meaning.
+#
+# Use it either:
+#   - in the skill's config.yml as the `tables:` block, or
+#   - via the CLI: `python -m rca_engine.cli ... --table-manifest migration/demo_payments/table_manifest.yml`
+
+tables:
+  - target: payments_gold
+    source: payments_src
+    source_script: migration/demo_payments/source_snowflake/payments_src.sql
+    target_script: migration/demo_payments/target_databricks/payments_gold.sql
+    join_keys: [payment_id]
+    date_column: payment_ts

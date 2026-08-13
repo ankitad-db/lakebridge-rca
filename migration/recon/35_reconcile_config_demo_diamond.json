@@ -1,0 +1,7 @@
+{
+  "tables": [
+    { "source_name": "orders_src", "target_name": "orders_gold_c", "join_columns": ["order_id"] },
+    { "source_name": "orders_src", "target_name": "orders_gold_d", "join_columns": ["order_id"] }
+  ],
+  "version": 2
+}
