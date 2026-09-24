@@ -264,13 +264,18 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
         scope=scope,
     )
 
-    # Tier-2 agentic fallback (headless): when a Foundation Model endpoint is configured
-    # (config `llm_endpoint`, or the `llm_endpoint` arg), ask it to root-cause each residual
+    # Tier-2 agentic fallback (headless): ask a Foundation Model to root-cause each residual
     # (needs_review / unknown) finding with a CONFIRMING query — using the migrated
     # `target_derivation` from the artifact mapping as the hypothesis basis — and promote a
     # verdict ONLY if the query confirms. This is the programmatic counterpart to the
-    # interactive Genie synthesis; off unless an endpoint is set (deterministic-only runs).
-    endpoint = llm_endpoint if llm_endpoint is not None else (cfg.get("llm_endpoint") or "")
+    # interactive Genie synthesis.
+    #
+    # GATE: `llm_synthesis` is the master agentic switch. The config `llm_endpoint` alone does
+    # NOT engage the tier (it stays set as the headless/App target) — the run is agentic only
+    # when llm_synthesis is true. An explicit `llm_endpoint` ARG still overrides (a headless job
+    # opting in with an endpoint, or opting out with ""), so callers keep full control.
+    llm_on = bool(cfg.get("llm_synthesis", False))
+    endpoint = llm_endpoint if llm_endpoint is not None else ((cfg.get("llm_endpoint") or "") if llm_on else "")
     if endpoint:
         try:
             from rca_engine.llm_fallback import run_llm_fallback
