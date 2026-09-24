@@ -92,7 +92,7 @@ export function Layout({ config, children }: { config: AppConfig | null; childre
           <span className="lbl">RCA MODE</span>
           <select value={mode} onChange={(e) => changeMode(e.target.value)}>
             <option value="deterministic">Deterministic (Tier-1, no LLM)</option>
-            <option value="agentic">Agentic (adds Tier-2 FM)</option>
+            <option value="agentic">Hybrid (deterministic + agentic fallback)</option>
           </select>
         </label>
 

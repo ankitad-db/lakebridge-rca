@@ -411,9 +411,9 @@ def _provenance(h) -> str:
     return " · ".join(used)
 
 
-def _transform_evidence(f: Finding) -> tuple[str | None, str, list[str]]:
+def _transform_evidence(f: Finding) -> dict[str, Any]:
     """Pull the migrated target derivation from the code evidence for the prominent
-    'Transformation logic' callout. Returns (expr, source_file, functions)."""
+    'Transformation logic' callout: {expr, source_file, source_line, snippet, functions}."""
 
     # Search ALL hypotheses (not just the top one): for an agentic column the promoted LLM
     # hypothesis is on top, but the parsed derivation lives on the deterministic hypothesis.
@@ -423,15 +423,20 @@ def _transform_evidence(f: Finding) -> tuple[str | None, str, list[str]]:
                 continue
             data = e.data or {}
             if data.get("expr"):
-                return data["expr"], data.get("source_file") or "", list(data.get("functions") or [])
+                return {"expr": data["expr"], "source_file": data.get("source_file") or "",
+                        "source_line": int(data.get("source_line") or 0),
+                        "snippet": data.get("source_snippet") or "",
+                        "functions": list(data.get("functions") or [])}
             d = (e.detail or "").strip()
             low = d.lower()
             if low.startswith("target derivation"):
                 expr = d.split(":", 1)[1].strip() if ":" in d else d
-                return expr.strip().strip("`").strip(), "", []
+                return {"expr": expr.strip().strip("`").strip(), "source_file": "",
+                        "source_line": 0, "snippet": "", "functions": []}
             if "load filter" in low or "passthrough" in low or "generated" in low:
-                return d.strip("`"), "", []
-    return None, "", []
+                return {"expr": d.strip("`"), "source_file": "", "source_line": 0,
+                        "snippet": "", "functions": []}
+    return {}
 
 
 def _culprit(category: RootCauseCategory, expr: str, functions: list[str]) -> str:
@@ -477,14 +482,16 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
             f"  ·  **Owner**: {h.recommended_owner or '—'}",
             f"- **Signal**: {_signal(f)}",
         ]
-        expr, src_file, funcs = _transform_evidence(f)
-        if expr:
+        te = _transform_evidence(f)
+        if te.get("expr"):
             col = f.column or _loc(f)
-            line = f"- **🔧 Transformation logic** — migrated target derivation: `{col} = {expr}`"
-            if src_file:
-                line += f"  _(in `{src_file}`)_"
-            header.append(line)
-            culprit = _culprit(h.category, expr, funcs)
+            header.append(f"- **🔧 Transformation logic** — migrated target derivation: `{col} = {te['expr']}`")
+            if te.get("source_file"):
+                loc = te["source_file"] + (f"  ·  line {te['source_line']}" if te.get("source_line") else "")
+                header.append(f"  - **📄 Script location**: `{loc}`")
+                if te.get("snippet"):
+                    header.append(f"  - **In the script**: `{te['snippet'][:200]}`")
+            culprit = _culprit(h.category, te["expr"], te.get("functions") or [])
             if culprit:
                 header.append(f"  - **⚠️ Likely culprit**: {culprit}")
         header += [

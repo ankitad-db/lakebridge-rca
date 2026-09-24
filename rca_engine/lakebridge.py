@@ -40,7 +40,9 @@ class ColumnTransform:
     expr: str = ""
     functions: list[str] = field(default_factory=list)
     is_direct: bool = False  # plain column reference / passthrough (cannot be transpilation)
-    source_file: str = ""     # migrated-SQL file this derivation was parsed from
+    source_file: str = ""     # migrated-SQL file this derivation was parsed from (full path)
+    source_line: int = 0      # 1-based line in source_file where the column is defined (0 = unknown)
+    source_snippet: str = ""  # the raw script line(s) for the column (regex-located)
 
 
 @dataclass
@@ -298,15 +300,36 @@ def parse_source_dir(path: str | Path, read: str = "snowflake") -> dict[str, dic
     return merged
 
 
+def _locate_column(text: str, col: str) -> tuple[int, str]:
+    """Regex-locate where a target column is defined in the migrated SQL — the
+    ``... AS <col>`` projection (or a bare ``<col>``). Returns (1-based line, trimmed
+    snippet), or (0, "") when not found — so the notebook can point at the exact spot."""
+    if not text or not col:
+        return 0, ""
+    lines = text.splitlines()
+    alias = re.compile(rf"\bAS\s+`?{re.escape(col)}`?\b", re.IGNORECASE)
+    for i, line in enumerate(lines, 1):
+        if alias.search(line):
+            return i, line.strip()
+    bare = re.compile(rf"`?\b{re.escape(col)}\b`?", re.IGNORECASE)
+    for i, line in enumerate(lines, 1):
+        if bare.search(line):
+            return i, line.strip()
+    return 0, ""
+
+
 def parse_transpiled_dir(path: str | Path) -> dict[str, TableMapping]:
     p = Path(path)
     files = [p] if p.is_file() else list(p.rglob("*.sql")) if p.exists() else []
     merged: dict[str, TableMapping] = {}
     for f in files:
         try:
-            for k, m in parse_transpiled_sql(f.read_text()).items():
-                for ct in m.transforms.values():   # tag each derivation with its source file
-                    ct.source_file = ct.source_file or f.name
+            text = f.read_text()
+            for k, m in parse_transpiled_sql(text).items():
+                for ct in m.transforms.values():   # tag each derivation with its source file + line
+                    if not ct.source_file:
+                        ct.source_file = str(f)
+                        ct.source_line, ct.source_snippet = _locate_column(text, ct.target_column)
                 if k not in merged:
                     merged[k] = m
                 else:

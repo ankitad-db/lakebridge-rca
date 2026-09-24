@@ -22,10 +22,10 @@ export function ModeToggle({ compact }: { compact?: boolean }) {
       </button>
       <button
         className={"btn" + (mode === "agentic" ? " primary" : "")}
-        title="Adds Tier-2 — Foundation-model fallback on the residual, still query-gated"
+        title="Hybrid — deterministic first, then a query-gated Foundation-model fallback on the residual"
         onClick={() => pick("agentic")}
       >
-        Agentic
+        Hybrid (deterministic + agentic)
       </button>
     </div>
   );
