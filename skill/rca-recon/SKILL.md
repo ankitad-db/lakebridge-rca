@@ -201,42 +201,55 @@ Use the in-notebook Spark session as the query backend. `analyze()` reads
 confirmation query per finding** (attaching the query + result as evidence and
 finalizing the verdict/confidence). This is the concluded result — not a guess.
 
+**Setup (run FIRST, once per session).** The code-aware transformation-logic callout and
+the agentic reconstruction parse the migrated SQL with **`sqlglot`**. It is a public PyPI
+package (not the vendored engine — installing it is fine and unrelated to the "no external
+install" rule for `rca_engine`). Install it **before importing the engine**, because
+sqlglot availability is bound at import time — if it's missing you still get lineage/verdicts
+but **no `🔧 Transformation logic`**:
+
 ```python
-import yaml
-from rca_engine.runners import SparkQueryRunner
-from rca_engine.analyze import analyze
-from rca_engine.report import build_tldr, write_rca_bundle
-
-import os
-cfg = yaml.safe_load(open("config.yml"))            # relative to this skill folder
-recon_id = "<RECON_ID_FROM_USER>"
-
-# Resolve save location: absolute path used as-is; a bare folder name goes under
-# the user's workspace home. Prefer scripts/run_rca.py which does this for you.
-raw = "<USER_LOCATION_OR_NONE>" or cfg.get("output_dir", "rca_notebooks")
-if raw.startswith("/"):
-    out_dir = raw
-else:
-    user = spark.sql("SELECT current_user() AS u").collect()[0][0]
-    out_dir = f"/Workspace/Users/{user}/{raw}"
-os.makedirs(out_dir, exist_ok=True)
-
-result = analyze(
-    SparkQueryRunner(spark), recon_id,
-    cfg["recon_catalog"], cfg["recon_schema"],
-    dialect=cfg.get("dialect", "snowflake"), drilldown=True,
-)
-print(build_tldr(result))
-
-# One self-contained folder per recon run:
-#   <out_dir>/rca_<recon_id>/
-#       00_index.ipynb        overview + per-table routing (multi-table runs)
-#       rca_<recon_id>.json   full findings
-#       <table>.ipynb         one notebook per reconciled table
-# Set combined=True to also write a single-scroll rca_<recon_id>_all.ipynb.
-folder = write_rca_bundle(result, out_dir, recon_id,
-                          combined=cfg.get("combined_notebook", False))
+%pip install sqlglot pyyaml
+dbutils.library.restartPython()
 ```
+
+**Run it with `run()` — do NOT call `analyze()` directly.** `run()` reads `config.yml` and
+wires in everything the concluded report needs: the code-aware **mapping** built from
+`transpiled_output_dir` (this is what produces the **🔧 Transformation logic** callout and
+the agentic reconstruction), the **scan scope**, distribution drift, UC lineage, suggested
+fixes + validation, and — when `llm_synthesis`/`llm_endpoint` is set — the Tier-2 agentic
+refinement. A bare `analyze(...)` call skips the mapping, so the notebook shows **no
+transformation logic** and unscoped counts — don't use it as the entry point.
+
+```python
+from scripts.run_rca import run
+
+recon_id = "<RECON_ID_FROM_USER>"
+# Everything (recon_catalog/schema, dialect, transpiled_output_dir for the transform-logic
+# highlight, scan scope, llm_synthesis/llm_endpoint for the agentic tier, output location)
+# comes from config.yml. Override per run only if asked:
+#   run(recon_id, spark, out_dir="/Volumes/...")            # different save location
+#   run(recon_id, spark, transpiled_output_dir="/Workspace/.../another_migration")
+#   run(recon_id, spark, llm_endpoint="")                   # force pure-deterministic
+result = run(recon_id, spark)
+```
+
+`run()` writes one self-contained folder per recon run and registers each notebook so it
+renders:
+
+```
+<out_dir>/rca_<recon_id>/
+    00_index.ipynb        overview + per-table routing (multi-table runs)
+    rca_<recon_id>.json   full findings
+    <table>.ipynb         one notebook per reconciled table (each column finding carries
+                          its 🔧 Transformation logic derivation, verdict, and confirm query)
+```
+
+If you need the lower-level pieces (e.g. to add your own drill-down after the concluded
+result), `run()` internally does: build the mapping from the `config.yml` artifacts →
+`analyze(runner, recon_id, catalog, schema, dialect=…, mapping=mapping, scope=…, …)` →
+`write_rca_bundle(...)`. Always pass `mapping=` if you call `analyze()` yourself, or the
+transformation logic will be missing.
 
 `scripts/run_rca.py` also accepts the location: `run(recon_id, spark, out_dir=...)`
 (priority: explicit arg > `config.output_dir` > `rca_notebooks` under the user's

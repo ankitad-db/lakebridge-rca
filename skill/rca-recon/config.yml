@@ -84,10 +84,20 @@ combined_notebook: false
 #     join_keys: [order_id]               # optional override
 #     date_column: order_ts               # optional override
 
-# Code-aware artifacts are supplied PER RUN by the driver via transpiled_output_dir (the
-# migrated Databricks SQL for that recon), so the deployed skill stays demo-agnostic. To
-# pin artifacts here instead, set transpiled_output_dir above or add a per-table `tables:`
-# manifest (target/source/target_script/join_keys) — see the commented example above.
+# Code-aware artifact (migrated Databricks SQL) for the transformation-logic highlight and
+# the agentic reconstruction. Point this at your migration's transpiled/target SQL folder.
+# (Default here = the hybrid retail demo bed.) Override per run with the transpiled_output_dir
+# argument to run() when analyzing a different migration.
+transpiled_output_dir: /Workspace/Users/ankita.darekar@databricks.com/.assistant/skills/rca-recon/demo_artifacts/det
+
+# Agentic (LLM) vs deterministic is a per-run CHOICE, defaulted here:
+#   llm_synthesis  drives the interactive Genie agentic tier (agent proposes + query-confirms);
+#   llm_endpoint   drives the headless equivalent (a job) — see run()'s llm_endpoint argument.
+# Currently set to PURELY DETERMINISTIC (Tier-1 only, no LLM). For the hybrid/agentic bed,
+# flip llm_synthesis: true + llm_endpoint: databricks-claude-opus-5 and point
+# transpiled_output_dir at .../demo_artifacts/hybrid (one config, change per run).
+llm_synthesis: false
+llm_endpoint: ""
 
 # Optional: use Unity Catalog lineage (system.access.column_lineage / table_lineage)
 # as an extra evidence source — confirms a column's true upstream provenance and the

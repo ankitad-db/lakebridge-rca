@@ -328,8 +328,10 @@ def _code_correlation_pass(findings: list[Finding], mapping: dict) -> None:
                 top.evidence.insert(0, Evidence(
                     label="code",
                     detail=f"Target derivation: `{ct.expr}`"
-                    + (f" (functions: {', '.join(ct.functions)})" if ct.functions else ""),
-                    data={"functions": ct.functions, "expr": ct.expr},
+                    + (f" (functions: {', '.join(ct.functions)})" if ct.functions else "")
+                    + (f" [in {ct.source_file}]" if ct.source_file else ""),
+                    data={"functions": ct.functions, "expr": ct.expr,
+                          "source_file": ct.source_file},
                 ))
                 top.confidence = round(min(0.99, max(top.confidence, 0.6) + 0.1), 2)
                 if f.column.lower() not in ct.expr.lower():

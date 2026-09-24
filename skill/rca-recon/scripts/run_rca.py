@@ -188,6 +188,22 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
     mapping = None
     if t_out or any(cfg.get(k) for k in ("recon_config_path",
                                          "transpile_error_file", "source_scripts_dir", "tables")):
+        # The code-aware mapping parses migrated SQL with sqlglot. Ensure it's importable
+        # BEFORE rca_engine.lakebridge is first imported here (its sqlglot availability is
+        # bound at import time). A missing sqlglot only costs the 🔧 Transformation-logic
+        # callout, so this is best-effort and never fails the run.
+        try:
+            import sqlglot  # noqa: F401
+        except Exception:
+            try:
+                import importlib
+                import subprocess
+                import sys as _sys
+                subprocess.run([_sys.executable, "-m", "pip", "install", "-q", "sqlglot"],
+                               check=False)
+                importlib.invalidate_caches()  # make the just-installed package importable in-process
+            except Exception:
+                pass
         from rca_engine.lakebridge import build_mapping
         mapping = build_mapping(
             cfg.get("recon_config_path"),

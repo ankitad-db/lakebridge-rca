@@ -40,6 +40,7 @@ class ColumnTransform:
     expr: str = ""
     functions: list[str] = field(default_factory=list)
     is_direct: bool = False  # plain column reference / passthrough (cannot be transpilation)
+    source_file: str = ""     # migrated-SQL file this derivation was parsed from
 
 
 @dataclass
@@ -304,6 +305,8 @@ def parse_transpiled_dir(path: str | Path) -> dict[str, TableMapping]:
     for f in files:
         try:
             for k, m in parse_transpiled_sql(f.read_text()).items():
+                for ct in m.transforms.values():   # tag each derivation with its source file
+                    ct.source_file = ct.source_file or f.name
                 if k not in merged:
                     merged[k] = m
                 else:

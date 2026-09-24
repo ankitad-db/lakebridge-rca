@@ -411,25 +411,60 @@ def _provenance(h) -> str:
     return " · ".join(used)
 
 
-def _transform_logic(f: Finding) -> str | None:
-    """Pull the migrated target derivation for this column out of the code evidence so
-    it can be shown as a prominent 'Transformation logic' callout. Returns the derivation
-    expression (without the 'Target derivation:' prefix / backticks) or None."""
+def _transform_evidence(f: Finding) -> tuple[str | None, str, list[str]]:
+    """Pull the migrated target derivation from the code evidence for the prominent
+    'Transformation logic' callout. Returns (expr, source_file, functions)."""
 
-    h = f.top_hypothesis
-    if not h:
-        return None
-    for e in h.evidence:
-        if e.label != "code" or not e.detail:
-            continue
-        d = e.detail.strip()
-        low = d.lower()
-        if low.startswith("target derivation"):
-            expr = d.split(":", 1)[1].strip() if ":" in d else d
-            return expr.strip().strip("`").strip()
-        if "load filter" in low or "passthrough" in low or "generated" in low:
-            return d.strip("`")
-    return None
+    # Search ALL hypotheses (not just the top one): for an agentic column the promoted LLM
+    # hypothesis is on top, but the parsed derivation lives on the deterministic hypothesis.
+    for h in (f.hypotheses or []):
+        for e in h.evidence:
+            if e.label != "code":
+                continue
+            data = e.data or {}
+            if data.get("expr"):
+                return data["expr"], data.get("source_file") or "", list(data.get("functions") or [])
+            d = (e.detail or "").strip()
+            low = d.lower()
+            if low.startswith("target derivation"):
+                expr = d.split(":", 1)[1].strip() if ":" in d else d
+                return expr.strip().strip("`").strip(), "", []
+            if "load filter" in low or "passthrough" in low or "generated" in low:
+                return d.strip("`"), "", []
+    return None, "", []
+
+
+def _culprit(category: RootCauseCategory, expr: str, functions: list[str]) -> str:
+    """Pinpoint the part of the migrated derivation tied to the detected mechanism."""
+
+    e = expr or ""
+    if category == RootCauseCategory.TYPE_PRECISION:
+        m = re.search(r"DECIMAL\s*\(\s*\d+\s*,\s*\d+\s*\)", e, re.I)
+        if m:
+            return f"the target type `{m.group(0)}` — scale reduced vs source (precision loss)"
+        m = re.search(r"ROUND\s*\(.*,\s*(\d+)\s*\)", e, re.I | re.S)
+        if m:
+            return f"`ROUND(…, {m.group(1)})` — rounded to {m.group(1)} dp (scale loss)"
+        return "the numeric scale/precision in the derivation"
+    if category == RootCauseCategory.TIMEZONE:
+        m = re.search(r"[+\-]\s*INTERVAL\s+'?\d+\s*HOURS?'?", e, re.I)
+        return f"`{m.group(0).strip()}` — a fixed offset added on load" if m else \
+            "the timezone offset in the derivation"
+    if category == RootCauseCategory.STRING_FORMAT:
+        for fn in ("UPPER", "LOWER", "INITCAP", "TRIM"):
+            if fn in e.upper():
+                return f"`{fn}(…)` — case/whitespace normalization not applied on the source side"
+        return "the string transform (case/whitespace)"
+    if category == RootCauseCategory.NULL_BOOLEAN:
+        return "the `CASE … 'true'/'false'` boolean encoding (source keeps 'Y'/'N')"
+    if category == RootCauseCategory.SEMI_STRUCTURED:
+        return "the `to_json(named_struct(…))` serialization (key set/order differs)"
+    if category in (RootCauseCategory.VOLUME_MISSING, RootCauseCategory.VOLUME_EXTRA):
+        m = re.search(r"WHERE\s+.+", e, re.I)
+        return f"`{m.group(0).strip().strip('`')}`" if m else "the load filter / fan-out in the transform"
+    if category == RootCauseCategory.TRANSPILATION:
+        return "the migrated expression differs from the source's intended formula (see root cause)"
+    return ""
 
 
 def _finding_section(f: Finding) -> list[dict[str, Any]]:
@@ -442,10 +477,16 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
             f"  ·  **Owner**: {h.recommended_owner or '—'}",
             f"- **Signal**: {_signal(f)}",
         ]
-        deriv = _transform_logic(f)
-        if deriv:
+        expr, src_file, funcs = _transform_evidence(f)
+        if expr:
             col = f.column or _loc(f)
-            header.append(f"- **🔧 Transformation logic** — migrated target derivation: `{col} = {deriv}`")
+            line = f"- **🔧 Transformation logic** — migrated target derivation: `{col} = {expr}`"
+            if src_file:
+                line += f"  _(in `{src_file}`)_"
+            header.append(line)
+            culprit = _culprit(h.category, expr, funcs)
+            if culprit:
+                header.append(f"  - **⚠️ Likely culprit**: {culprit}")
         header += [
             f"- **Root cause**: {h.rationale}",
         ]
