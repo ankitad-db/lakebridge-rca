@@ -645,8 +645,29 @@ def _validation_cells(result: RcaResult) -> list[dict[str, Any]]:
     ]
 
 
+def _run_mode(result: RcaResult) -> str:
+    """Infer whether the agentic tier was engaged (any LLM-fallback attempt or llm_drilldown
+    evidence present) → 'hybrid', else 'deterministic'. Works for App/CLI/skill alike."""
+    for f in result.findings:
+        if "llm_fallback" in (f.metadata or {}):
+            return "hybrid"
+        for h in f.hypotheses:
+            if any(e.label == "llm_drilldown" for e in h.evidence):
+                return "hybrid"
+    return "deterministic"
+
+
+def _mode_banner(result: RcaResult) -> str:
+    if _run_mode(result) == "hybrid":
+        return ("> **🔎 RCA mode — Hybrid (deterministic + agentic fallback).** Tier-1 rules + a "
+                "query-gated Foundation-Model fallback on the residual. Every verdict is still backed "
+                "by an executed query; a model-proposed cause is promoted only if its confirming query matches.")
+    return ("> **🔎 RCA mode — Deterministic (Tier-1 only).** Rule-based probes + one live confirming "
+            "query per finding. No LLM. Reproducible &amp; auditable.")
+
+
 def build_notebook(result: RcaResult) -> dict[str, Any]:
-    cells = [_md_cell(build_tldr(result))]
+    cells = [_md_cell(_mode_banner(result)), _md_cell(build_tldr(result))]
     cells += _validation_cells(result)
     cells.append(
         _md_cell("---\n# 🔬 Findings & evidence\n\nGrouped by table pair (as Lakebridge "
@@ -708,7 +729,7 @@ def _subresult(result: RcaResult, target_table: str) -> RcaResult:
 
 def build_index_notebook(result: RcaResult, table_files: dict[str, str]) -> dict[str, Any]:
     """A master routing notebook: overall TL;DR + a per-table index linking each notebook."""
-    cells = [_md_cell(build_tldr(result))]
+    cells = [_md_cell(_mode_banner(result)), _md_cell(build_tldr(result))]
     rows = ["| Table | Max severity | Verdicts | Findings | Notebook |",
             "|---|---|---|---|---|"]
     # Sort tables by their worst finding so the riskiest tables surface first.
