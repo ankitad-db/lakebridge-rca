@@ -12,6 +12,7 @@ import re
 import threading
 import time
 import uuid
+from functools import lru_cache
 from typing import Any, Optional
 
 from rca_engine.audit import log_audit, read_audit
@@ -69,6 +70,27 @@ def _diffs_count(result: RcaResult) -> int:
                if s.missing_in_source or s.missing_in_target or s.absolute_mismatch or not s.schema_ok)
 
 
+@lru_cache(maxsize=8)
+def _build_mapping_cached(transpiled: str, recon_config: str, source_scripts: str, dialect: str):
+    if not (transpiled or recon_config or source_scripts):
+        return None
+    try:
+        from rca_engine.lakebridge import build_mapping
+
+        return build_mapping(recon_config or None, transpiled or None, None,
+                             source_scripts=source_scripts or None, source_dialect=dialect)
+    except Exception as exc:  # code-aware is best-effort; RCA still runs data-only
+        print(f"[rca] code-aware mapping skipped: {exc}")
+        return None
+
+
+def _mapping(settings: Settings):
+    """Per-column mapping from the migrated SQL artifact so findings carry the
+    🔧 Transformation logic + culprit. None when no artifact is configured."""
+    return _build_mapping_cached(settings.transpiled_output_dir or "", settings.recon_config_path or "",
+                                 settings.source_scripts_dir or "", settings.dialect)
+
+
 def _maybe_llm_fallback(settings: Settings, result: RcaResult, runner) -> int:
     """Tier-2: resolve residual findings via the Foundation Model API (best-effort).
     Returns the number of findings promoted. No-op unless ``RCA_LLM_FALLBACK`` is on."""
@@ -77,7 +99,8 @@ def _maybe_llm_fallback(settings: Settings, result: RcaResult, runner) -> int:
     try:
         from .llm_fallback import run_llm_fallback
 
-        n = run_llm_fallback(result, runner, settings.llm_endpoint, dialect=settings.dialect)
+        n = run_llm_fallback(result, runner, settings.llm_endpoint, dialect=settings.dialect,
+                             mapping=_mapping(settings))
         if n:
             print(f"[rca] LLM fallback resolved {n} residual finding(s) for {result.recon_id}")
         return n
@@ -250,7 +273,8 @@ def load_result(settings: Settings, recon_id: str) -> Optional[RcaResult]:
         from rca_engine.analyze import analyze
 
         return analyze(_runner(settings), recon_id, settings.recon_catalog,
-                       settings.recon_schema, dialect=settings.dialect, drilldown=True)
+                       settings.recon_schema, dialect=settings.dialect, drilldown=True,
+                       mapping=_mapping(settings))
     return None
 
 
@@ -409,7 +433,8 @@ def run_analysis(settings: Settings, recon_id: str, only_table: str) -> RcaResul
         from rca_engine.analyze import analyze
 
         scoped = analyze(runner, recon_id, settings.recon_catalog, settings.recon_schema,
-                         dialect=settings.dialect, drilldown=True, only_table=only_table)
+                         dialect=settings.dialect, drilldown=True, only_table=only_table,
+                         mapping=_mapping(settings))
         _maybe_llm_fallback(settings, scoped, runner)
         _merge_into_bundle(settings, recon_id, scoped)
         return scoped
@@ -645,7 +670,8 @@ def _analyze_publish(settings: Settings, recon_id: str, drilldown: bool,
 
     runner = _runner(settings)
     result = analyze(runner, recon_id, settings.recon_catalog,
-                     settings.recon_schema, dialect=settings.dialect, drilldown=drilldown)
+                     settings.recon_schema, dialect=settings.dialect, drilldown=drilldown,
+                     mapping=_mapping(settings))
     _maybe_llm_fallback(settings, result, runner)
     try:
         write_rca_bundle(result, settings.bundles_dir, recon_id, combined=False)

@@ -26,11 +26,13 @@ class AnalyzeRequest(BaseModel):
     table: str
     notebook_dir: str | None = None
     publish: bool = True
+    agentic: bool | None = None   # UI toggle: True=deterministic+agentic, False=deterministic-only, None=default
 
 
 class FullRunRequest(BaseModel):
     drilldown: bool = True
     notebook_dir: str | None = None
+    agentic: bool | None = None   # UI toggle (see AnalyzeRequest)
 
 
 class ReconTablePair(BaseModel):
@@ -148,7 +150,7 @@ def analyze_table(recon_id: str, req: AnalyzeRequest, catalog: str | None = None
                   dialect: str | None = None):
     """Run the RCA for one table (calls the engine the Genie skill uses), publish its
     notebook to the workspace, and return the view + notebook link."""
-    settings = _settings(catalog, dialect)
+    settings = _settings(catalog, dialect).with_agentic(req.agentic)
     try:
         result = svc.run_analysis(settings, recon_id, req.table)
     except Exception as exc:
@@ -171,7 +173,9 @@ def analyze_all(recon_id: str, req: FullRunRequest | None = None, catalog: str |
     Returns immediately; poll GET /runs/{recon_id}/job for progress."""
     drilldown = req.drilldown if req else True
     notebook_dir = req.notebook_dir if req else None
-    return svc.start_full_run(_settings(catalog, dialect), recon_id, drilldown=drilldown, notebook_dir=notebook_dir)
+    agentic = req.agentic if req else None
+    return svc.start_full_run(_settings(catalog, dialect).with_agentic(agentic), recon_id,
+                              drilldown=drilldown, notebook_dir=notebook_dir)
 
 
 @router.get("/runs/{recon_id}/job")

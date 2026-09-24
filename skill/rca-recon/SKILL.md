@@ -267,7 +267,18 @@ probes map to categories.
 > `{recon_id, folder, findings, tables}` via `dbutils.notebook.exit`. Same code, same
 > outputs — the app just reads the written bundle back. Nothing you do interactively changes.
 
-### 3. Go deeper on anything unresolved
+### ⚖️ Deterministic vs agentic — CHECK `config.llm_synthesis` BEFORE going further
+- **`llm_synthesis: false` (deterministic mode):** the `run()` result is the **final** report.
+  **STOP here.** Do NOT do steps 3 / 3b / 3c — no extra agent drill-down queries, no Tier‑2
+  LLM fallback, no narrative synthesis. Present the deterministic bundle exactly as `run()`
+  wrote it (every verdict is already a rule + a confirming query). Going to Tier‑2 here is a
+  bug — it makes a "deterministic" run non-deterministic.
+- **`llm_synthesis: true` (hybrid/agentic mode):** continue to the steps below.
+
+(The headless `llm_endpoint` fallback inside `run()` already honors this — it only fires when
+an endpoint is set. Steps 3/3b/3c are the *interactive* equivalent and must honor the same flag.)
+
+### 3. Go deeper on anything unresolved  _(agentic — only when `llm_synthesis: true`)_
 `analyze()` already confirms the common cases. For any finding still at
 confidence < 0.8, verdict `needs_review`, or where the user wants proof, run an
 extra query and update the finding. Useful patterns (source = `main.source_table`,
@@ -291,7 +302,7 @@ target = `main.target_table`):
 Update each finding's verdict/confidence with what the query shows. Iterate until
 resolved. Do **not** stop if anything is unresolved.
 
-### 3b. Tier 2 — your (Genie Code) LLM fallback for the residual long tail
+### 3b. Tier 2 — your (Genie Code) LLM fallback for the residual long tail  _(only when `llm_synthesis: true`)_
 The engine's probes + templated drill-down are a **deterministic first pass**: they
 resolve the *known* mismatch mechanisms. Whatever they cannot explain is left as
 `needs_review` / `unknown`. **This is where you (the LLM) add value** — reason over

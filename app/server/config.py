@@ -28,6 +28,11 @@ class Settings:
     audit_table: str = ""          # fully-qualified Delta table for the pipeline audit trail
     llm_fallback: bool = False     # Tier-2: resolve residual findings via the Foundation Model API
     llm_endpoint: str = ""         # FM serving endpoint used for the Tier-2 fallback
+    # Code-aware RCA: folder/file of migrated (transpiled) Databricks SQL. When set, the App
+    # builds the per-column mapping so findings carry the 🔧 Transformation logic + culprit.
+    transpiled_output_dir: str = ""
+    recon_config_path: str = ""    # optional Lakebridge reconcile-config JSON (keys/mapping)
+    source_scripts_dir: str = ""   # optional source-dialect DDL (declared source types)
     use_skill_job: bool = False    # invoke the Genie Code skill as a Databricks Job (vs in-process)
     skill_notebook: str = ""       # workspace path of the deployed skill's job_entry notebook
     skill_dir: str = ""            # workspace folder of the deployed skill (contains scripts/, config.yml)
@@ -59,6 +64,16 @@ class Settings:
             return self
         return dataclasses.replace(self, dialect=dialect)
 
+    def with_agentic(self, agentic: bool | None) -> "Settings":
+        """A copy with the Tier-2 agentic layer forced on/off for one run (the UI's
+        Deterministic ↔ Agentic choice). ``None`` keeps the deployment default. Agentic
+        needs an endpoint configured; deterministic never calls the LLM."""
+        import dataclasses
+
+        if agentic is None or agentic == self.llm_fallback:
+            return self
+        return dataclasses.replace(self, llm_fallback=bool(agentic))
+
 
 def load_settings() -> Settings:
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -76,6 +91,9 @@ def load_settings() -> Settings:
         audit_table=_resolve_audit_table(recon_catalog, recon_schema),
         llm_fallback=os.environ.get("RCA_LLM_FALLBACK", "").lower() in ("1", "true", "yes"),
         llm_endpoint=os.environ.get("RCA_LLM_ENDPOINT", "databricks-claude-opus-5"),
+        transpiled_output_dir=os.environ.get("RCA_TRANSPILED_OUTPUT_DIR", ""),
+        recon_config_path=os.environ.get("RCA_RECON_CONFIG_PATH", ""),
+        source_scripts_dir=os.environ.get("RCA_SOURCE_SCRIPTS_DIR", ""),
         use_skill_job=os.environ.get("RCA_USE_SKILL_JOB", "").lower() in ("1", "true", "yes"),
         skill_notebook=os.environ.get("RCA_SKILL_NOTEBOOK", ""),
         skill_dir=os.environ.get("RCA_SKILL_DIR", ""),

@@ -1,22 +1,14 @@
-"""Tests for the app-side Tier-2 Foundation Model fallback (server.llm_fallback).
+"""Tests for the Tier-2 Foundation Model fallback (rca_engine.llm_fallback).
 
-The model call itself is monkeypatched — we verify the loop wiring and the
-query-confirmation gate (a proposal is only promoted when its query confirms).
+The App/CLI/skill all delegate to this one implementation. The model call itself is
+monkeypatched — we verify the loop wiring and the query-confirmation gate (a proposal is
+only promoted when its query confirms). A dummy ``client`` is passed so no WorkspaceClient
+is built.
 """
 
 from __future__ import annotations
 
-import os
-import sys
-
-import pytest
-
-# Make the app's ``server`` package importable.
-_APP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app")
-if _APP not in sys.path:
-    sys.path.insert(0, _APP)
-
-from rca_engine.models import (  # noqa: E402
+from rca_engine.models import (
     Finding,
     Hypothesis,
     MismatchSample,
@@ -25,8 +17,9 @@ from rca_engine.models import (  # noqa: E402
     RootCauseCategory,
     Verdict,
 )
+from rca_engine import llm_fallback
 
-llm_fallback = pytest.importorskip("server.llm_fallback")
+_CLIENT = object()  # dummy client so run_llm_fallback skips building a WorkspaceClient
 
 
 class StubRunner:
@@ -62,12 +55,12 @@ def test_run_llm_fallback_promotes_on_confirm(monkeypatch):
     result = _residual_result()
     runner = StubRunner(row={"confirmed": True, "n": 5})
 
-    monkeypatch.setattr(llm_fallback, "_ask_model", lambda ep, bundle: {
+    monkeypatch.setattr(llm_fallback, "_ask_model", lambda client, ep, bundle: {
         "resolvable": True, "category": "string_format", "verdict": "migration_induced",
         "rationale": "equal after UPPER()", "confirm_query": "SELECT true AS confirmed, 5 AS n",
     })
 
-    promoted = llm_fallback.run_llm_fallback(result, runner, endpoint="fm-endpoint")
+    promoted = llm_fallback.run_llm_fallback(result, runner, endpoint="fm-endpoint", client=_CLIENT)
     assert promoted == 1
     assert result.findings[0].top_hypothesis.category == RootCauseCategory.STRING_FORMAT
     assert result.findings[0].top_hypothesis.verdict == Verdict.MIGRATION_INDUCED
@@ -76,8 +69,8 @@ def test_run_llm_fallback_promotes_on_confirm(monkeypatch):
 def test_run_llm_fallback_skips_when_not_resolvable(monkeypatch):
     result = _residual_result()
     runner = StubRunner(row={"confirmed": True})
-    monkeypatch.setattr(llm_fallback, "_ask_model", lambda ep, bundle: {"resolvable": False})
-    assert llm_fallback.run_llm_fallback(result, runner, endpoint="fm-endpoint") == 0
+    monkeypatch.setattr(llm_fallback, "_ask_model", lambda client, ep, bundle: {"resolvable": False})
+    assert llm_fallback.run_llm_fallback(result, runner, endpoint="fm-endpoint", client=_CLIENT) == 0
     assert result.findings[0].top_hypothesis.verdict == Verdict.NEEDS_REVIEW
 
 
