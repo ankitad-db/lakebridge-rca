@@ -53,6 +53,7 @@ class ReconTriggerRequest(BaseModel):
     notebook_dir: str | None = None
     sample_limit: int = 100
     max_key_tries: int = 8
+    agentic: bool | None = None   # RCA mode for the auto-analyze step (deterministic vs agentic)
 
 
 @router.get("/config")
@@ -110,7 +111,7 @@ def trigger_recon(req: ReconTriggerRequest, catalog: str | None = None, dialect:
     """Trigger an app-native reconcile (auto-detect keys, auto-fix, then RCA).
     Returns a token immediately; poll GET /recon/job/{token}."""
     payload = req.model_dump()
-    return svc.start_recon(_settings(req.catalog or catalog, req.dialect or dialect), payload)
+    return svc.start_recon(_settings(req.catalog or catalog, req.dialect or dialect).with_agentic(req.agentic), payload)
 
 
 @router.get("/recon/job/{token}")

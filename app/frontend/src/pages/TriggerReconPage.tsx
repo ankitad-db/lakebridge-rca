@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, getActiveCatalog } from "../api";
 import type { AppConfig, ReconJob, ReconPairResult } from "../types";
+import { ModeToggle } from "../components/ModeToggle";
 
 interface Row {
   source: string;
@@ -245,6 +246,7 @@ export function TriggerReconPage({ config }: { config: AppConfig | null }) {
             <input type="checkbox" checked={autoAnalyze} onChange={(e) => setAutoAnalyze(e.target.checked)} />
             <span>Run RCA + publish notebooks automatically</span>
           </label>
+          <ModeToggle compact />
           <input style={{ ...inputStyle, width: 320 }} value={nbDir} onChange={(e) => setNbDir(e.target.value)}
                  placeholder="notebook target folder (optional)" title="Workspace folder for published notebooks" />
           <button className="btn primary" onClick={trigger} disabled={running || (config != null && !config.has_warehouse)}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import type { AppConfig, ReconRun } from "../types";
+import { ModeToggle } from "../components/ModeToggle";
 
 export function RunsPage({ config }: { config: AppConfig | null }) {
   const [runs, setRuns] = useState<ReconRun[] | null>(null);
@@ -29,6 +30,7 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
         </div>
         <div className="row" style={{ gap: 10, alignItems: "center" }}>
           {config?.demo_mode && <span className="demo-pill">DEMO · bundled sample data</span>}
+          <ModeToggle compact />
           <button className="btn primary" onClick={() => nav("/trigger")}>⚡ Trigger new recon</button>
         </div>
       </div>

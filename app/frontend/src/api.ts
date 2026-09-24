@@ -96,7 +96,8 @@ export const api = {
   schemas: () => get<{ schemas: string[] }>("/api/schemas").then((r) => r.schemas),
   schemaTables: (schema: string) =>
     get<{ tables: string[] }>(`/api/schemas/${encodeURIComponent(schema)}/tables`).then((r) => r.tables),
-  triggerRecon: (body: unknown) => post<ReconJob>("/api/recon/trigger", body),
+  triggerRecon: (body: unknown) =>
+    post<ReconJob>("/api/recon/trigger", { ...(body as Record<string, unknown>), agentic: isAgentic() }),
   reconJob: (token: string) => get<ReconJob>(`/api/recon/job/${encodeURIComponent(token)}`),
   audit: (limit = 50) =>
     get<{ audit_table: string; rows: AuditRow[] }>(`/api/audit?limit=${limit}`),
