@@ -153,13 +153,46 @@ def _func_names(node) -> list[str]:
     return sorted(n for n in names if n)
 
 
+def _is_star_only(select) -> bool:
+    """True if a SELECT projects only ``*`` (so real derivations live one level down)."""
+    exprs = getattr(select, "expressions", None) or []
+    if not exprs:
+        return False
+    return all(isinstance(e, exp.Star) or (isinstance(e, exp.Column) and isinstance(e.this, exp.Star))
+               for e in exprs)
+
+
+def _unwrap_select(select):
+    """Descend to the projection-bearing SELECT.
+
+    Handles the common migrated shapes where the per-column derivations sit one level
+    down: ``SELECT * FROM (SELECT <cols> ...)`` and ``... (SELECT <cols> ... UNION ALL
+    ...)`` (e.g. a duplicated-batch fan-out). Returns the innermost SELECT that actually
+    lists columns, so its transforms are extracted rather than a bare ``*``."""
+    seen: set[int] = set()
+    while isinstance(select, exp.Select) and _is_star_only(select) and id(select) not in seen:
+        seen.add(id(select))
+        frm = select.args.get("from") or select.find(exp.From)
+        sub = frm.find(exp.Subquery) if frm is not None else None
+        inner = sub.this if sub is not None else None
+        if isinstance(inner, exp.Union):
+            inner = inner.this if isinstance(inner.this, exp.Select) else inner.find(exp.Select)
+        if isinstance(inner, exp.Select):
+            select = inner
+            continue
+        break
+    return select
+
+
 def _select_of(stmt):
     e = stmt.expression if hasattr(stmt, "expression") else None
     if isinstance(e, exp.Union):
-        return e.this if isinstance(e.this, exp.Select) else e.find(exp.Select)
+        sel = e.this if isinstance(e.this, exp.Select) else e.find(exp.Select)
+        return _unwrap_select(sel) if sel is not None else sel
     if isinstance(e, exp.Select):
-        return e
-    return stmt.find(exp.Select)
+        return _unwrap_select(e)
+    sel = stmt.find(exp.Select)
+    return _unwrap_select(sel) if sel is not None else sel
 
 
 def parse_transpiled_sql(sql_text: str, read: str = "databricks") -> dict[str, TableMapping]:

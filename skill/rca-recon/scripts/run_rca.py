@@ -126,6 +126,39 @@ def _resolve_out_dir(out_dir: str, spark: Any) -> str:
         return f"/tmp/{folder}"
 
 
+def _render_workspace_notebooks(folder: str) -> None:
+    """Register the bundle's .ipynb files as real NOTEBOOK objects.
+
+    ``write_rca_bundle`` writes each notebook as a plain file. Under ``/Workspace`` that
+    lands as a workspace FILE, which the UI opens as raw JSON instead of a rendered
+    notebook. Re-import each as a JUPYTER notebook at the SAME path (index links keep
+    working). Best-effort: outside the workspace, or without SDK access, it is a no-op.
+    """
+
+    if not str(folder).startswith("/Workspace"):
+        return
+    try:
+        import base64
+        import glob
+
+        from databricks.sdk import WorkspaceClient
+        from databricks.sdk.service.workspace import ImportFormat
+
+        w = WorkspaceClient()
+        for fs_path in glob.glob(os.path.join(folder, "**", "*.ipynb"), recursive=True):
+            api_path = fs_path[len("/Workspace"):]  # workspace API paths omit the mount prefix
+            with open(fs_path, "rb") as fh:
+                content = base64.b64encode(fh.read()).decode()
+            try:
+                w.workspace.delete(api_path)  # a FILE can't be overwritten by a NOTEBOOK in place
+            except Exception:
+                pass
+            w.workspace.import_(path=api_path, format=ImportFormat.JUPYTER,
+                                content=content, overwrite=True)
+    except Exception as exc:  # best-effort — the bundle files are still written
+        print(f"[bundle] notebook rendering skipped: {exc}")
+
+
 def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | None = None,
         only_table: str | None = None, llm_endpoint: str | None = None,
         transpiled_output_dir: str | None = None):
@@ -235,10 +268,24 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
         except Exception as _e:  # best-effort — the deterministic result still stands
             print(f"[llm_fallback] skipped: {_e}")
 
+    # Clean any prior bundle at this path (a re-run) so writing fresh files doesn't collide
+    # with NOTEBOOK objects registered by a previous run (a file write over a notebook fails).
+    if str(out_dir).startswith("/Workspace"):
+        try:
+            from databricks.sdk import WorkspaceClient
+            WorkspaceClient().workspace.delete(
+                os.path.join(out_dir, f"rca_{recon_id}")[len("/Workspace"):], recursive=True)
+        except Exception:
+            pass
+
     # One self-contained folder per recon run: rca_<id>/ with 00_index.ipynb, the
     # findings JSON, and one notebook per reconciled table (see write_rca_bundle).
     folder = write_rca_bundle(result, out_dir, recon_id,
                               combined=bool(cfg.get("combined_notebook", False)))
+
+    # A raw .ipynb written to /Workspace lands as a workspace FILE, which opens as JSON.
+    # Re-register each as a JUPYTER NOTEBOOK object (same path) so it renders as a notebook.
+    _render_workspace_notebooks(folder)
 
     # Learning loop: remember every query-confirmed cause so it auto-proposes next time.
     if mem_table:
