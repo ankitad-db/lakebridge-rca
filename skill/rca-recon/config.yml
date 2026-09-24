@@ -197,4 +197,5 @@ validate_fixes: true
 # this only adds description and widens query coverage. Narrative is always labeled as LLM
 # synthesis, never presented as evidence. It's advisory: the interactive agent reads
 # SKILL.md; headless runs (no agent) simply skip it and render today's deterministic report.
-llm_synthesis: true
+# NOTE: llm_synthesis is defined once, in the mode block near the top of this file (default
+# deterministic = false). Do not re-declare it here — a duplicate key would silently win.
