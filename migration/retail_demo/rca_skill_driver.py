@@ -19,13 +19,15 @@ for _p in (SKILL, SKILL + "/scripts"):
 dbutils.widgets.text("recon_id", "")
 dbutils.widgets.text("endpoint", "")
 dbutils.widgets.text("transpiled_dir", "")
+dbutils.widgets.text("out_dir", "")
 rid = dbutils.widgets.get("recon_id").strip()
 ep = dbutils.widgets.get("endpoint").strip() or None
 tdir = dbutils.widgets.get("transpiled_dir").strip() or None
+out_dir = dbutils.widgets.get("out_dir").strip() or None
 
-print(f"recon_id={rid}  endpoint={ep}  transpiled_dir={tdir}")
+print(f"recon_id={rid}  endpoint={ep}  transpiled_dir={tdir}  out_dir={out_dir}")
 
 import run_rca
 
-res = run_rca.run(rid, spark, llm_endpoint=ep, transpiled_output_dir=tdir)
+res = run_rca.run(rid, spark, out_dir=out_dir, llm_endpoint=ep, transpiled_output_dir=tdir)
 print("FINDINGS_TOTAL:", len(res.findings))
