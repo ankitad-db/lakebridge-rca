@@ -126,7 +126,27 @@ Reconcile scales with the data; RCA does not. Scaling to **TB** is the same scri
 
 ---
 
-## 5. Takeaways for leadership
+## 5. Graded quality — offline eval / LLM-as-judge
+
+`migration/retail_demo/eval.py` grades the generated RCA against a **ground-truth oracle** of the
+seeded defects (verdict precision/recall, category accuracy, detection recall, a false-positive
+check) plus **LLM-as-judge** quality scores from `rca_engine/judge.py` (evidence sufficiency, fix
+validity, narrative faithfulness). This is **offline QA — it never changes a runtime verdict.**
+
+| Bed | Detection | Category acc. | Verdict acc. | Precision | Recall | False positives | Evidence suff. | Fix validity | Narrative faithf. |
+|---|---|---|---|---|---|---|---|---|---|
+| Deterministic | **10/10** | **10/10** | **1.00** | **1.00** | **1.00** | **0** | 0.85 | 0.62 | 0.95 |
+| Hybrid | **6/6** | **6/6** | **1.00** | **1.00** | **1.00** | **0** | 0.79 | 0.49 | 1.00 |
+
+- **0 false positives** — the within-tolerance `tax_rate` is correctly **not** raised as migration-induced.
+- Verdict precision/recall + category/detection are **oracle-based** (deterministic, backend-independent).
+- Quality scores shown use the deterministic structure grader; pass `--endpoint databricks-claude-opus-5`
+  to `eval.py` for the FM-backed LLM grader. The judge is separate from the runtime — a defense-in-depth
+  eval layer, not a gate.
+
+---
+
+## 6. Takeaways for leadership
 
 - **Explains every reconcile difference with the right root cause, query-backed** — the
   deterministic tier concludes with a re-runnable query; the agentic tier adds *precision* on the

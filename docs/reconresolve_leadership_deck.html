@@ -371,7 +371,18 @@ footer .wrap{padding-block:28px;display:flex;justify-content:space-between;flex-
         <tr class="hl"><td>50,000,000 (wide)</td><td>8.5 GB/table</td><td>~17 GB</td><td>1,637 s</td><td>~97 s</td><td>~268 s</td></tr>
       </tbody>
     </table>
-    <p class="note"><b>Prod-volume proof (bottom row):</b> 50M WIDE high-cardinality rows = 8.5 GB stored/table (~17 GB) — reconcile 27 min, RCA ~97 s, with 🔧/📄/⚠️ rendered at scale. Stored = <span class="mono">DESCRIBE DETAIL</span>; low-cardinality demo columns compress ~20–30× (logical = GB column). TB = the same script with larger N + wider rows (a data-gen + warehouse cost, not an engine limit).</p>
+    <p class="note"><b>Prod-volume proof (bottom row):</b> 50M WIDE high-cardinality rows = 8.5 GB stored/table (~17 GB) — reconcile 27 min, RCA ~97 s (hybrid ~268 s), with 🔧/📄/⚠️ rendered at scale. Stored = <span class="mono">DESCRIBE DETAIL</span>; low-cardinality demo columns compress ~20–30× (logical = GB column). TB = the same script with larger N + wider rows (a data-gen + warehouse cost, not an engine limit).</p>
+
+    <h3 style="margin:26px 0 4px;font-size:1.05rem">Graded quality — offline eval / LLM-as-judge</h3>
+    <p class="cap" style="margin-bottom:14px">Generated RCA graded against a ground-truth oracle of the seeded defects (verdict P/R, category, detection, false positives) + LLM-as-judge quality scores. Offline QA — never a runtime gate.</p>
+    <table class="scaletbl">
+      <thead><tr><th>Bed</th><th>Detection</th><th>Category</th><th>Verdict P / R</th><th>False pos.</th><th>Evidence</th><th>Fix</th><th>Faithful.</th></tr></thead>
+      <tbody>
+        <tr><td>Deterministic</td><td>10/10</td><td>10/10</td><td>1.00 / 1.00</td><td>0</td><td>0.85</td><td>0.62</td><td>0.95</td></tr>
+        <tr><td>Hybrid</td><td>6/6</td><td>6/6</td><td>1.00 / 1.00</td><td>0</td><td>0.79</td><td>0.49</td><td>1.00</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Verdict precision/recall + category/detection are oracle-based (deterministic). The within-tolerance <span class="mono">tax_rate</span> is correctly <b>not</b> raised → 0 false positives. Quality scores from the structure grader; the harness also supports the FM-backed judge (<span class="mono">rca_engine/judge.py</span>, <span class="mono">eval.py --endpoint</span>).</p>
   </div>
 </section>
 
