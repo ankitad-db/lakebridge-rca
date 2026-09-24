@@ -17,7 +17,14 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from rca_engine.judge import grade_result  # noqa: E402
 from rca_engine.models import (  # noqa: E402
-    Evidence, Finding, Fix, Hypothesis, RcaResult, ReconType, RootCauseCategory, Verdict,
+    Evidence,
+    Finding,
+    Fix,
+    Hypothesis,
+    RcaResult,
+    ReconType,
+    RootCauseCategory,
+    Verdict,
 )
 
 
