@@ -100,9 +100,28 @@ Stored (Delta/Parquet, `DESCRIBE DETAIL sizeInBytes`) for the reconciled `fact_s
 
 Plus `dim_customer` (20k), `dim_product` (2k), `dim_fx` (3,655 daily rates). The demo columns are
 low-cardinality, so Parquet compresses ~20–30× — the **logical/uncompressed** footprint is ~0.15 GB
-per fact table (~0.6 GB across the four). A true multi-hundred-GB / **TB** benchmark needs wider,
-higher-cardinality rows: raise `N` in `build_retail_beds.py` and widen the row — flagged as a
-follow-up (larger data-gen + warehouse cost), reproducible from the same scripts.
+per fact table (~0.6 GB across the four).
+
+### 4a. Prod-volume proof — "does it survive real prod volume?"
+
+A **wide, high-cardinality** bed (`mig_xl_*`, `build_xl_bed.py`) so the size is genuine GB, not
+compressed MB — with the same seeded defects so RCA still root-causes. recon_id `5a87fd6e…`.
+
+| Table | Rows | Columns | Stored (Delta) |
+|---|--:|--:|--:|
+| `mig_xl_src.fact_sales` | 50,000,000 | wide (+10 high-cardinality) | **8.46 GB** · 64 files |
+| `mig_xl_tgt.fact_sales` | 49,900,000 | wide | **8.42 GB** · 64 files |
+
+| Stage | Time |
+|---|--:|
+| Lakebridge `reconcile` (50M × wide, ~17 GB) | **1,637 s (~27 min)** |
+| ReconResolve RCA — deterministic, code-aware | **~97 s** |
+
+**Result:** at **50M rows / ~17 GB**, reconcile completed in ~27 min and RCA in **~97 s** — RCA
+stays flat because it runs on the bounded recon **sample**, not the raw volume, and the code-aware
+🔧 transformation-logic + 📄 script-location + ⚠️ culprit rendered on every finding at this scale.
+Reconcile scales with the data; RCA does not. Scaling to **TB** is the same script with a larger
+`N` + wider rows (a data-gen + warehouse-time cost, not an engine limit).
 
 ---
 

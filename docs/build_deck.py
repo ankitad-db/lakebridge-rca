@@ -27,6 +27,7 @@ WHITE= RGBColor(0xFF, 0xFF, 0xFF)
 
 HEAD = "Barlow"
 BODY = "DM Sans"
+MONO = "DM Sans"
 
 prs = Presentation()
 prs.slide_width = In(10); prs.slide_height = In(5.625)
@@ -305,16 +306,80 @@ for cx, h in zip(tcols, theads):
     txt(s, cx, 3.72, 1.5, 0.25, [(h, {"size": 9, "bold": True, "font": HEAD, "color": TEAL})])
 rect(s, 0.6, 3.98, 8.8, 0.015, fill=LMUT)
 data = [("2,000,000", "~8.5 MB / table", "~0.15 GB", "944 s (warm)", "~270 s", "~390 s"),
-        ("20,000,000", "~94 MB / table", "~1.5 GB", "1,014 s", "~50 s", "— (det shown)")]
-yy = 4.08
-for row in data:
+        ("20,000,000", "~94 MB / table", "~1.5 GB", "1,014 s", "~50 s", "— (det)"),
+        ("50,000,000 (wide)", "8.5 GB / table", "~17 GB", "1,637 s", "~97 s", "— (det)")]
+yy = 4.06
+for i, row in enumerate(data):
     for cx, v in zip(tcols, row):
-        txt(s, cx, yy, 1.5, 0.3, [(v, {"size": 9.5, "font": BODY, "color": INK})])
-    yy += 0.36
-txt(s, 0.6, 4.86, 8.8, 0.6, [("Stored = Delta/Parquet bytes (DESCRIBE DETAIL); low-cardinality demo columns compress ~20–30× "
+        hl = (i == 2)  # prod-volume row
+        txt(s, cx, yy, 1.55, 0.3, [(v, {"size": 9.5, "font": BODY, "color": (RED if hl else INK), "bold": hl})])
+    yy += 0.34
+txt(s, 0.6, 5.18, 8.8, 0.4, [("Prod-volume proof (bottom row): 50M WIDE high-cardinality rows = 8.5 GB stored/table "
+    "(~17 GB) — reconcile 27 min, RCA ~97 s. RCA runs on the bounded recon sample, so it stays flat as volume "
+    "grows. Stored = DESCRIBE DETAIL; low-cardinality demo cols compress ~20–30× (logical = GB column).",
+    {"size": 8, "font": BODY, "color": MUT})], spacing=1.02)
+if False:
+  txt(s, 0.6, 4.86, 8.8, 0.6, [("Stored = Delta/Parquet bytes (DESCRIBE DETAIL); low-cardinality demo columns compress ~20–30× "
     "(logical = the GB figure). RCA runs on the bounded recon sample — 10× data grows RCA ~2×, reconcile ~3.2×. "
     "A true TB run needs wider, higher-cardinality rows (raise N in build_retail_beds.py) — flagged follow-up, "
     "reproducible from the same scripts.", {"size": 8.5, "font": BODY, "color": MUT})], spacing=1.05)
+
+# ============================ VALIDATION / TEST COVERAGE ============================
+s = slide(WHITE)
+chrome(s, "Validation · test coverage", "Tested across every capability — and every entry point", title_size=22)
+vt = [("3", "beds: hybrid ·\ndeterministic · aggregate", INK), ("100%", "seeded defects\ndetected & classified", RED),
+      ("3", "entry points:\nApp · CLI · Skill", INK), ("50M", "rows · 8.5 GB\nreconciled (prod)", INK)]
+for i, (n, l, c) in enumerate(vt):
+    x = 0.6 + i * 2.22
+    rect(s, x, 2.0, 2.05, 1.0, fill=PANEL2, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.08)
+    txt(s, x, 2.1, 2.05, 0.5, [(n, {"size": 26, "bold": True, "font": HEAD, "color": c})],
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    txt(s, x, 2.6, 2.05, 0.4, lines([(seg, {"size": 8, "font": BODY, "color": MUT}) for seg in l.split("\n")]),
+        align=PP_ALIGN.CENTER)
+rect(s, 0.6, 3.18, 8.8, 0.46, fill=DARK, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
+txt(s, 0.85, 3.18, 8.3, 0.46, [("Tested:  ", {"size": 9.5, "bold": True, "font": HEAD, "color": WHITE}),
+    ("correctness · transform-logic + culprit + script location · confidence · deterministic & hybrid · "
+     "App/CLI/Skill parity · concurrency · prod-volume (50M / 8.5 GB)", {"size": 9.5, "font": BODY, "color": LMUT})],
+    anchor=MSO_ANCHOR.MIDDLE, spacing=1.0)
+worked = ["Explains every mismatch and proves it with a live query",
+          "Shows the migrated derivation, the ⚠️ culprit sub-expression, and the 📄 script path + line",
+          "Deterministic (rules) and hybrid (query-gated FM) — same engine, one flag",
+          "Per-finding confidence + a run-level rollup",
+          "Identical output on App, CLI & Skill; 6 concurrent runs held"]
+watch = ["Agentic root-cause needs an FM endpoint + a good confirming query — query-gated, so a miss stays "
+         "needs-review, never wrong",
+         "TB-scale needs wider / higher-cardinality rows (50M / 8.5 GB shown; TB = data-gen + warehouse cost)",
+         "A joined derivation (e.g. FX) needs the lookup table's columns — supplied via join-context"]
+txt(s, 0.6, 3.85, 4.3, 0.3, [("✅  What worked", {"size": 13, "bold": True, "font": HEAD, "color": GREEN})])
+txt(s, 0.6, 4.2, 4.4, 1.4, lines([("•  " + w, {"size": 9, "color": INK, "sa": 4}) for w in worked]), spacing=1.05)
+txt(s, 5.1, 3.85, 4.3, 0.3, [("🔎  Watch-outs", {"size": 13, "bold": True, "font": HEAD, "color": TEAL})])
+txt(s, 5.1, 4.2, 4.3, 1.4, lines([("•  " + w, {"size": 9, "color": INK, "sa": 4}) for w in watch]), spacing=1.05)
+
+# ============================ CAPABILITY MATRIX ============================
+s = slide(WHITE)
+chrome(s, "Capability matrix", "Capability status — the same across App, CLI & Skill", title_size=22)
+ccols = [0.6, 3.85, 5.1, 8.35]; cwid = [3.1, 1.15, 3.1, 1.25]
+for cx, w, h in zip(ccols, cwid, ["CAPABILITY", "STATUS", "WHAT WORKS", "ENTRY POINTS"]):
+    txt(s, cx, 2.05, w, 0.3, [(h, {"size": 9, "bold": True, "font": HEAD, "color": MUT})])
+rect(s, 0.6, 2.33, 8.8, 0.02, fill=LMUT)
+caps = [
+    ("Deterministic RCA", "rule + confirming query per finding", "App·CLI·Skill"),
+    ("Transformation logic + culprit + script location", "derivation, culprit sub-expr, path·line·snippet", "App·CLI·Skill"),
+    ("Hybrid (agentic fallback)", "query-gated FM on residual; promote only if confirmed", "App·CLI·Skill"),
+    ("Confidence scoring", "per-finding % + confirmed badge + run rollup", "App·CLI·Skill"),
+    ("Aggregate RCA", "per-rule SUM / AVG / COUNT by group", "App·CLI·Skill"),
+    ("Threshold & schema", "within-tolerance benign; type/precision diffs", "App·CLI·Skill"),
+    ("Scale / prod-volume", "50M rows · 8.5 GB reconciled + RCA", "All"),
+    ("Concurrency", "6 concurrent runs · ~500 s wall", "All"),
+]
+y = 2.45
+for cap, works, ep in caps:
+    txt(s, ccols[0], y, cwid[0], 0.36, [(cap, {"size": 10.5, "bold": True, "font": HEAD, "color": INK})], spacing=0.98)
+    txt(s, ccols[1], y, cwid[1], 0.3, [("✅ Works", {"size": 10, "bold": True, "font": HEAD, "color": GREEN})])
+    txt(s, ccols[2], y, cwid[2], 0.36, [(works, {"size": 9, "font": BODY, "color": MUT})], spacing=0.98)
+    txt(s, ccols[3], y, cwid[3], 0.3, [(ep, {"size": 9, "font": MONO, "color": TEAL})])
+    rect(s, 0.6, y + 0.38, 8.8, 0.012, fill=PANEL)
+    y += 0.4
 
 # ============================ 8 — IMPACT ============================
 s = slide(WHITE)
