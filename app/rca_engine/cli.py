@@ -45,6 +45,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--warehouse-id", default=None)
     parser.add_argument("--no-drilldown", action="store_true",
                         help="Skip live confirmation queries (deterministic pass only).")
+    parser.add_argument("--endpoint", default=None,
+                        help="Foundation Model serving endpoint (e.g. databricks-claude-opus-5) for "
+                             "the Tier-2 LLM fallback on residual (needs-review/unknown) findings. "
+                             "Each hypothesis is still gated by an executed confirming query. Omit to "
+                             "run the deterministic pass only.")
+    parser.add_argument("--max-llm-findings", type=int, default=25,
+                        help="Cap how many residual findings the --endpoint fallback attempts (default 25).")
     parser.add_argument("--recon-config", default=None,
                         help="Lakebridge reconcile config JSON (join keys, column mapping, filters).")
     parser.add_argument("--transpiled-output", default=None,
@@ -60,6 +67,13 @@ def main(argv: list[str] | None = None) -> int:
                              "including a depth-agnostic upstream trace-back to the root layer.")
     parser.add_argument("--max-lineage-hops", type=int, default=10,
                         help="Safety budget for the upstream lineage trace-back depth (default 10).")
+    parser.add_argument("--trace-job", action="store_true",
+                        help="Job-level trace: for each column mismatch, find the job that builds the "
+                             "target (via system.access.table_lineage, or --job-id), parse its ETL SQL "
+                             "and trace the column back to its true source columns + a reproduction query.")
+    parser.add_argument("--job-id", default=None,
+                        help="Explicit job id/name that builds the target table(s), used by --trace-job "
+                             "when system-table discovery is unavailable.")
     parser.add_argument("--combined-notebook", action="store_true",
                         help="Also write a single-scroll combined notebook (rca_<id>_all.ipynb) "
                              "alongside the per-table notebooks.")
@@ -96,7 +110,18 @@ def main(argv: list[str] | None = None) -> int:
         runner, args.recon_id, args.recon_catalog, args.recon_schema,
         dialect=args.dialect, drilldown=not args.no_drilldown, mapping=mapping,
         use_lineage=args.use_lineage, max_lineage_hops=args.max_lineage_hops,
+        trace_job=args.trace_job, job_id=args.job_id, profile=args.profile,
     )
+
+    # Optional Tier-2 LLM fallback on residual findings (still query-gated). Runs before
+    # the bundle is written so the notebook/JSON reflect any promoted verdicts.
+    if args.endpoint:
+        from rca_engine.llm_fallback import run_llm_fallback
+        promoted = run_llm_fallback(
+            result, runner, args.endpoint, dialect=args.dialect, mapping=mapping,
+            profile=args.profile, max_findings=args.max_llm_findings,
+        )
+        print(f"[llm] promoted {promoted} residual finding(s) via the confirming-query gate.")
 
     os.makedirs(args.output_dir, exist_ok=True)
     folder = write_rca_bundle(result, args.output_dir, args.recon_id,

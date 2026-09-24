@@ -1,0 +1,24 @@
+# Deep-diamond per-table manifest — ties each reconciled LEAF to its Snowflake SOURCE script
+# and its migrated Databricks TARGET script. Feeds the RCA's code-aware correlation (sqlglot)
+# and the LLM fallback's evidence bundle:
+#   * source declares AMOUNT=NUMBER(18,4) and NET_AMOUNT = GROSS_AMOUNT * 0.90 (10% discount);
+#   * target inlines cast(amount AS DECIMAL(18,2)) and round(gross_amount * 1.08, 2) (8% tax),
+#     plus (arm D) concat(lower(sku),'  ') — so the model can cite the exact transform that
+#     changed each column's value or meaning.
+#
+# Use it either:
+#   - in the skill's config.yml as the `tables:` block, or
+#   - via the CLI: `python -m rca_engine.cli ... --table-manifest migration/demo_diamond_deep/table_manifest.yml`
+
+tables:
+  - target: leaf_e_tgt
+    source: leaf_e_src
+    source_script: migration/demo_diamond_deep/source_snowflake/leaf_e_src.sql
+    target_script: migration/demo_diamond_deep/target_databricks/leaf_e_gold.sql
+    join_keys: [a_id]
+
+  - target: leaf_f_tgt
+    source: leaf_f_src
+    source_script: migration/demo_diamond_deep/source_snowflake/leaf_f_src.sql
+    target_script: migration/demo_diamond_deep/target_databricks/leaf_f_gold.sql
+    join_keys: [a_id]

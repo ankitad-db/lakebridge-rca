@@ -17,8 +17,9 @@ All objects live in the existing catalog `fevm_ps_dr_us_east_2_catalog`
 | `mig_source_sim` | Simulated Snowflake source (source of truth) |
 | `mig_target` | Migrated Databricks target (dims, facts, gold) |
 | `mig_multilayer` | Multi-layer lineage bed (raw → stg → curated → gold) for the trace-back |
-| `mig_demo_diamond` | Flagship diamond bed (shared node fans out to two leaves) — clustering, blast-radius, trace-back |
+| `mig_demo_diamond` | Diamond bed (shared node fans out to two leaves) — clustering, blast-radius, trace-back |
 | `mig_demo_payments` | Two-tiers bed — deterministic (timezone) + LLM fallback (business-logic drift) |
+| `mig_demo_diamond_deep` | **Flagship** deep-diamond bed — the whole feature set in one run (both tiers, 3-hop trace-back, sibling isolation, distractor, blast-radius, clustering) |
 | `reconcile` | Lakebridge reconcile metadata + output tables |
 
 ## Layout
@@ -39,9 +40,22 @@ migration/
   edge_cases/                           # comprehensive edge-case source + target tables
   pilot/                                # authentic pilot migration scripts (see below)
   multilayer/                           # multi-layer lineage bed for the depth-agnostic trace-back
-  demo_diamond/                         # flagship diamond bed (clustering, blast-radius, trace-back)
+  demo_diamond/                         # diamond bed (clustering, blast-radius, trace-back)
   demo_payments/                        # two-tiers bed (deterministic timezone + LLM-fallback business drift)
+  demo_diamond_deep/                    # FLAGSHIP deep-diamond bed — whole feature set in one run
 ```
+
+## Flagship deep-diamond bed (`demo_diamond_deep/`)
+
+The single bed that exercises **every** RCA capability in one reconcile run. A 4-layer diamond
+(`raw_a → shared_b → branch_c/branch_d → leaf_e/leaf_f → report_e/report_f`) injects a shared
+`amount` precision loss and a `net_amount` business-logic drift at `shared_b`, plus an `sku`
+string-format distractor on the `branch_d` arm only. Reconciling the two leaves proves: **Tier-1
+deterministic** (amount, sku) + **Tier-2 LLM fallback** (net_amount), **3-hop lineage trace-back**
+to root, **sibling isolation** (leaf_e never surfaces arm-D's sku), **blast radius** (report_*
+consumers) and **clustering** (amount across both leaves). Run it end to end with
+`python scripts/run_diamond_deep_demo.py --profile ps-dr-east --warehouse-id 4c79c6902dd2bbc2`.
+See [`demo_diamond_deep/README.md`](demo_diamond_deep/README.md).
 
 ## Multi-layer lineage bed (`multilayer/`)
 

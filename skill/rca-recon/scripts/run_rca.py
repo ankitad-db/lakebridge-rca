@@ -127,7 +127,8 @@ def _resolve_out_dir(out_dir: str, spark: Any) -> str:
 
 
 def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | None = None,
-        only_table: str | None = None):
+        only_table: str | None = None, llm_endpoint: str | None = None,
+        transpiled_output_dir: str | None = None):
     """Run the end-to-end RCA and write artifacts.
 
     ``out_dir`` (where the notebook + JSON are written) is resolved in priority
@@ -148,13 +149,16 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
     os.makedirs(out_dir, exist_ok=True)
 
     # Optionally load Lakebridge transpile + recon-config artifacts for code-aware RCA.
+    # A per-run `transpiled_output_dir` argument overrides the config (lets one deployed
+    # skill point at different migrated-SQL artifacts per recon run).
+    t_out = transpiled_output_dir or cfg.get("transpiled_output_dir")
     mapping = None
-    if any(cfg.get(k) for k in ("recon_config_path", "transpiled_output_dir",
-                                "transpile_error_file", "source_scripts_dir", "tables")):
+    if t_out or any(cfg.get(k) for k in ("recon_config_path",
+                                         "transpile_error_file", "source_scripts_dir", "tables")):
         from rca_engine.lakebridge import build_mapping
         mapping = build_mapping(
             cfg.get("recon_config_path"),
-            cfg.get("transpiled_output_dir"),
+            t_out,
             cfg.get("transpile_error_file"),
             source_scripts=cfg.get("source_scripts_dir"),
             source_dialect=cfg.get("dialect", "snowflake"),
@@ -191,6 +195,11 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
         use_lineage=use_lineage,
         # Depth of the upstream lineage trace-back (walks to the root layer).
         max_lineage_hops=int(cfg.get("max_lineage_hops", 10)),
+        # Job-level source-column trace: parse the building job's ETL SQL to trace each
+        # column mismatch to its true source columns + a reproduction query. The job is
+        # discovered from system.access.table_lineage, or set job_id to pin it.
+        trace_job=bool(cfg.get("trace_job", False)),
+        job_id=(str(cfg["job_id"]) if cfg.get("job_id") else None),
         only_table=only_table,
         # Quantify each column's source-vs-target distribution shift (on by default).
         drift=bool(cfg.get("distribution_drift", True)),
@@ -205,6 +214,26 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
         # Bound the live source/target scans (flagged keys + partition window).
         scope=scope,
     )
+
+    # Tier-2 agentic fallback (headless): when a Foundation Model endpoint is configured
+    # (config `llm_endpoint`, or the `llm_endpoint` arg), ask it to root-cause each residual
+    # (needs_review / unknown) finding with a CONFIRMING query — using the migrated
+    # `target_derivation` from the artifact mapping as the hypothesis basis — and promote a
+    # verdict ONLY if the query confirms. This is the programmatic counterpart to the
+    # interactive Genie synthesis; off unless an endpoint is set (deterministic-only runs).
+    endpoint = llm_endpoint if llm_endpoint is not None else (cfg.get("llm_endpoint") or "")
+    if endpoint:
+        try:
+            from rca_engine.llm_fallback import run_llm_fallback
+            promoted = run_llm_fallback(
+                result, runner, str(endpoint),
+                dialect=cfg.get("dialect", "snowflake"), mapping=mapping,
+                max_findings=int(cfg.get("llm_max_findings", 25)),
+            )
+            if promoted:
+                print(f"Tier-2 LLM fallback promoted {promoted} residual finding(s) via {endpoint}")
+        except Exception as _e:  # best-effort — the deterministic result still stands
+            print(f"[llm_fallback] skipped: {_e}")
 
     # One self-contained folder per recon run: rca_<id>/ with 00_index.ipynb, the
     # findings JSON, and one notebook per reconciled table (see write_rca_bundle).

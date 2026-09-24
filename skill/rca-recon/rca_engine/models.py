@@ -19,6 +19,7 @@ class ReconType(str, Enum):
     MISSING_IN_TARGET = "missing_in_target"
     MISSING_IN_SOURCE = "missing_in_source"
     COLUMN_MISMATCH = "column_mismatch"
+    AGGREGATE = "aggregate"                     # aggregates-reconcile per-rule (SUM/AVG/COUNT/...)
 
 
 class RootCauseCategory(str, Enum):

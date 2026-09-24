@@ -153,6 +153,22 @@ missing or broken, the Tier-2 LLM continues the walk by proposing and executing 
 queries at each upstream layer — so the verdict stays query-backed at whatever layer the
 difference actually entered.
 
+### Job-level source-column trace (`trace_job` / `--trace-job`)
+
+Reconciliation works at the **table** level; this pass goes one level up to the ETL **job**
+that builds the target. For each mismatching column it finds that job — from
+`system.access.table_lineage` (the same system tables the UC-lineage pass reads), or a
+pinned `job_id` — exports its notebook SQL, parses it with **sqlglot**, and walks the
+column back to its **true source `table.column`(s)** with the transform at every hop.
+Because ETL renames and computes columns (e.g. `eff_routing_yield` is `EXP(SUM(LN(…)))`
+over two *different* source columns, not a column that exists in any source table), the
+mismatching target column rarely maps to a same-named source column — this trace finds the
+ones it actually derives from. It then attaches a **runnable reproduction query** (the
+temp-object chain inlined as CTEs, restricted to the sampled row) that recomputes the value
+from source, so you can compare it to the target value and see where the ETL diverges. This
+complements UC lineage (metadata: *which* upstream) with the SQL-derived *how/why*, and
+works even where UC column lineage was never captured.
+
 ## Suggested fixes (and the validation gate)
 
 For each finding ReconResolve attaches a **concrete, runnable fix** — a corrected transform
@@ -179,6 +195,7 @@ rca_engine/            # source-agnostic diagnostics package — the engine
   drilldown.py         #   live confirmation queries → finalize verdicts
   drift.py             #   distribution-shift quantification
   lineage.py           #   UC lineage: depth-agnostic upstream trace-back + downstream blast radius
+  mismatch_trace.py    #   job-level trace: parse the building job's ETL SQL (sqlglot) → true source columns + reproduction query
   fixgen.py            #   runnable suggested fixes + fix-validation gate
   cluster.py           #   group findings that share one systemic root cause
   resolve.py           #   Tier-2 LLM fallback + gated LLM fix proposal
@@ -255,7 +272,8 @@ python -m rca_engine.cli \
   --output-dir rca_out
 # optional code-aware inputs:
 #   --recon-config <path> --transpiled-output <dir> --source-scripts <dir> \
-#   --transpile-errors <file> --use-lineage --max-lineage-hops 10 --combined-notebook
+#   --transpile-errors <file> --use-lineage --max-lineage-hops 10 --combined-notebook \
+#   --trace-job [--job-id <id>]   # trace each column mismatch through the building job's ETL SQL
 ```
 
 Produces a self-contained `rca_out/rca_<recon_id>/` folder: `00_index.ipynb`
@@ -321,6 +339,7 @@ To exercise the full pipeline on the bundled Snowflake→Databricks test bed:
 | `tables:` | explicit per-table source/target script manifest (overrides folder scans) |
 | `use_uc_lineage` | attach UC lineage evidence + walk a depth-agnostic upstream trace-back to the root layer (default: false) |
 | `max_lineage_hops` | safety budget for the trace-back walk depth (default: 10; stops early at the roots) |
+| `trace_job` / `job_id` | job-level source-column trace: parse the building job's ETL SQL to trace each column mismatch to its true source columns + a reproduction query (default: false; `job_id` pins the job when lineage discovery is unavailable) |
 | `suggest_fixes` / `validate_fixes` | attach runnable fixes / run the fix-validation gate (default: on) |
 | `use_memory` / `memory_table` | learning loop — reuse confirmed causes as gated priors |
 

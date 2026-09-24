@@ -23,6 +23,7 @@ never bypasses the "every verdict cites an executed query" guarantee.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
 
 from rca_engine.ingest import QueryRunner
@@ -96,6 +97,40 @@ def needs_query(source: RcaResult | Iterable[Finding]) -> list[Finding]:
 
 def _short(name: str) -> str:
     return name.split(".")[-1].strip("`").lower() if name else ""
+
+
+_QUALIFIED_TABLE_RE = re.compile(r"\b([A-Za-z_][\w]*\.[A-Za-z_][\w]*\.[A-Za-z_][\w]*)\b")
+
+
+def _joins_other_tables(tm) -> bool:
+    """True if the target FROM/JOIN references a table other than the source (a lookup)."""
+    fs = (tm.from_sql or "").lower()
+    return " join " in fs
+
+
+def _referenced_table_columns(from_sql: str, target_table: str, runner) -> dict[str, list[str]]:
+    """Column names of each fully-qualified table referenced in the FROM/JOIN (except the
+    target), via information_schema — so the model can reconstruct a joined derivation."""
+    out: dict[str, list[str]] = {}
+    tgt = target_table.strip("`").lower()
+    seen = set()
+    for m in _QUALIFIED_TABLE_RE.finditer(from_sql or ""):
+        fq = m.group(1)
+        if fq.lower() == tgt or fq.lower() in seen:
+            continue
+        seen.add(fq.lower())
+        cat, sch, tbl = fq.split(".")
+        try:
+            rows = runner.query(
+                f"SELECT column_name FROM {cat}.information_schema.columns "
+                f"WHERE table_schema='{sch}' AND table_name='{tbl}' ORDER BY ordinal_position"
+            )
+            cols = [r.get("column_name") for r in rows if r.get("column_name")]
+            if cols:
+                out[fq] = cols
+        except Exception:
+            continue
+    return out
 
 
 def build_evidence_bundle(
@@ -172,6 +207,16 @@ def build_evidence_bundle(
             {"severity": i.severity, "kind": i.kind, "message": i.message}
             for i in tm.transpile_issues
         ]
+        # If the migrated derivation joins other tables (e.g. an FX/rate/lookup), give the
+        # model the FROM/JOIN and those tables' columns so it can reconstruct the value
+        # instead of declining. Best-effort: skip silently if the schema fetch fails.
+        if ct is not None and not ct.is_direct and tm.from_sql and _joins_other_tables(tm):
+            join_ctx: dict[str, Any] = {"from_sql": tm.from_sql}
+            if runner is not None:
+                cols = _referenced_table_columns(tm.from_sql, finding.target_table, runner)
+                if cols:
+                    join_ctx["referenced_tables"] = cols
+            bundle["join_context"] = join_ctx
 
     # UC lineage: walk the target column/table back to its upstream(s) so the LLM can
     # locate where the difference entered. Uses already-attached lineage evidence, and

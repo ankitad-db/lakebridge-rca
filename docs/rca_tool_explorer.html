@@ -402,75 +402,92 @@
 <!-- LIVE DEMO -->
 <section>
   <div class="wrap">
-    <div class="eyebrow">The use case</div>
-    <h2>Reconciliation flags the symptom — ReconResolve finds the upstream cause</h2>
-    <p class="lead">A retail <b>Orders</b> dataset is migrated Snowflake→Databricks through a layered pipeline
-      (raw → enriched → curated → gold). The team reconciles the two published <b>gold</b> tables against the trusted
-      source. Reconciliation tells you <i>which</i> columns and rows differ — but not <i>why</i>, and not that several
-      "different" columns actually share <b>one upstream cause</b>. That triage is the manual bottleneck this removes.</p>
+    <div class="eyebrow">The flagship use case · proven live</div>
+    <h2>One migration, every capability — the deep-diamond that stress-tests the whole engine</h2>
+    <p class="lead">A Snowflake→Databricks migration shaped as a <b>4-layer diamond</b>: a clean root
+      (<code>raw_a</code>) feeds a <b>shared</b> transform (<code>shared_b</code>) that fans out into two arms
+      (<code>branch_c</code>, <code>branch_d</code>), each ending in a published <b>leaf</b> (<code>leaf_e</code>,
+      <code>leaf_f</code>). The team reconciles <b>each leaf against its trusted source</b>. This single bed exercises
+      <b>both RCA tiers</b>, deep <b>lineage trace-back</b>, <b>sibling isolation</b>, a <b>distractor</b>,
+      <b>blast radius</b> and <b>clustering</b> — the whole engine in one run.</p>
 
     <div class="demo-hero">
-      <div><b style="font-size:16px">Reconciled: orders_src &nbsp;vs&nbsp; orders_gold_c &amp; orders_gold_d</b> &nbsp; <span class="rid">recon_id 7d786327137d44c9bef3f2bc75fba518</span></div>
-      <p><b>Only the two gold leaves are reconciled</b> — yet every real defect lives one or two layers upstream. The engine
-        must walk back from the symptom on the leaf to the layer where the difference actually entered.</p>
+      <div><b style="font-size:16px">Reconciled: leaf_e_src → leaf_e_tgt &nbsp;·&nbsp; leaf_f_src → leaf_f_tgt</b> &nbsp; <span class="rid">recon_id 1d04640331554f61874b47299b08f5b1</span></div>
+      <p><b>Only the two leaves are reconciled</b> — yet every defect entered 3 hops upstream at the shared transform (and one
+        distractor at an arm). The engine walks each column back to where it truly entered, and resolves each with the
+        <b>cheapest tier that works</b>.</p>
       <div class="hero-stats">
-        <div class="s"><b>6 issues</b><span>captured & explained across the two leaves</span></div>
-        <div class="s"><b>2 root causes</b><span>most "issues" collapse to one shared upstream defect</span></div>
-        <div class="s"><b>3 hops</b><span>traced past the leaf to where the difference entered</span></div>
-        <div class="s"><b>0 false positives</b><span>unchanged columns stay clean</span></div>
+        <div class="s"><b>5 findings</b><span>captured &amp; explained across the two leaves</span></div>
+        <div class="s"><b>2 tiers</b><span>3 deterministic + 2 Claude-confirmed (Opus 5)</span></div>
+        <div class="s"><b>3 hops</b><span>traced past the leaf to root <code>raw_a</code></span></div>
+        <div class="s"><b>isolation ✓</b><span><code>leaf_e</code>: 0 sku leakage from the sibling arm</span></div>
       </div>
     </div>
 
     <div class="demo-two">
-      <!-- Topology -->
+      <!-- Topology (diamond) -->
       <div class="topo">
-        <svg viewBox="0 0 700 340" role="img" aria-label="Diamond pipeline topology">
+        <svg viewBox="0 0 760 362" role="img" aria-label="Deep-diamond pipeline topology">
           <defs>
             <marker id="da" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#7d919a"/></marker>
             <marker id="dr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#FF3621"/></marker>
           </defs>
-          <!-- edges (data flow) -->
-          <path d="M360,50 L360,78" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
-          <path d="M345,136 L250,168" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
-          <path d="M375,136 L548,168" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
-          <path d="M237,222 L237,256" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
-          <path d="M560,222 L560,256" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <!-- data-flow edges -->
+          <path d="M380,48 L380,78" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M338,144 L250,180" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M422,144 L548,180" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M210,226 L210,256" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M557,226 L557,256" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M210,304 L210,318" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
+          <path d="M557,304 L557,318" stroke="#7d919a" stroke-width="2" fill="none" marker-end="url(#da)"/>
           <!-- reconciled-against (dashed) -->
-          <path d="M126,268 C 150,250 150,278 162,279" stroke="#FF3621" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#dr)"/>
-          <path d="M120,292 C 220,338 430,338 486,300" stroke="#FF3621" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#dr)"/>
-          <!-- nodes -->
+          <path d="M118,280 L123,280" stroke="#FF3621" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#dr)"/>
+          <path d="M660,280 L652,280" stroke="#FF3621" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#dr)"/>
           <g font-family="-apple-system,Segoe UI,Roboto,sans-serif">
-            <!-- src -->
-            <rect x="8" y="250" width="118" height="54" rx="10" fill="#E6F0F7" stroke="#2272B4" stroke-width="1.5"/>
-            <text x="67" y="272" text-anchor="middle" font-size="12" font-weight="700" fill="#1B3139">orders_src</text>
-            <text x="67" y="288" text-anchor="middle" font-size="9.5" fill="#2272B4">source of truth</text>
-            <!-- raw -->
-            <rect x="285" y="8" width="150" height="42" rx="10" fill="#eef2f4" stroke="#1B3139" stroke-width="1.5"/>
-            <text x="360" y="27" text-anchor="middle" font-size="12" font-weight="700" fill="#1B3139">orders_raw</text>
-            <text x="360" y="41" text-anchor="middle" font-size="9.5" fill="#5A6B72">root · clean</text>
-            <!-- enriched (shared defect) -->
-            <rect x="262" y="78" width="196" height="58" rx="12" fill="#FFE9E6" stroke="#FF3621" stroke-width="2"/>
-            <text x="360" y="97" text-anchor="middle" font-size="12.5" font-weight="800" fill="#1B3139">orders_enriched</text>
-            <text x="360" y="112" text-anchor="middle" font-size="10" fill="#c62a1c">⚠ amount  DECIMAL(18,4)→(18,2)</text>
-            <text x="360" y="126" text-anchor="middle" font-size="10" fill="#c62a1c">⚠ order_ts  +5:30 (no UTC)</text>
-            <!-- curated_c -->
-            <rect x="150" y="168" width="175" height="54" rx="11" fill="#FFF3D6" stroke="#E0A100" stroke-width="1.5"/>
-            <text x="237" y="190" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">orders_curated_c</text>
-            <text x="237" y="207" text-anchor="middle" font-size="10" fill="#8a5b00">⚠ sku  lower()+space</text>
-            <!-- curated_d -->
-            <rect x="472" y="168" width="176" height="54" rx="11" fill="#FFF3D6" stroke="#E0A100" stroke-width="1.5"/>
-            <text x="560" y="190" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">orders_curated_d</text>
-            <text x="560" y="207" text-anchor="middle" font-size="10" fill="#8a5b00">⚠ drop  order_id &gt; 470</text>
-            <!-- gold_c -->
-            <rect x="165" y="256" width="145" height="46" rx="11" fill="#E3F6EE" stroke="#00A972" stroke-width="1.7"/>
-            <text x="237" y="276" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">orders_gold_c</text>
-            <text x="237" y="292" text-anchor="middle" font-size="9.5" font-weight="800" fill="#00754f">LEAF E · reconciled</text>
-            <!-- gold_d -->
-            <rect x="488" y="256" width="145" height="46" rx="11" fill="#E3F6EE" stroke="#00A972" stroke-width="1.7"/>
-            <text x="560" y="276" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">orders_gold_d</text>
-            <text x="560" y="292" text-anchor="middle" font-size="9.5" font-weight="800" fill="#00754f">LEAF F · reconciled</text>
-            <!-- dashed legend -->
-            <text x="8" y="322" font-size="9.5" fill="#c62a1c">– – reconciled against each leaf</text>
+            <!-- raw_a -->
+            <rect x="305" y="8" width="150" height="40" rx="10" fill="#eef2f4" stroke="#1B3139" stroke-width="1.5"/>
+            <text x="380" y="26" text-anchor="middle" font-size="12" font-weight="700" fill="#1B3139">raw_a</text>
+            <text x="380" y="40" text-anchor="middle" font-size="9.5" fill="#5A6B72">clean root</text>
+            <!-- shared_b (both value defects) -->
+            <rect x="285" y="78" width="190" height="66" rx="12" fill="#FFE9E6" stroke="#FF3621" stroke-width="2"/>
+            <text x="380" y="97" text-anchor="middle" font-size="12.5" font-weight="800" fill="#1B3139">shared_b · shared root</text>
+            <text x="380" y="114" text-anchor="middle" font-size="10" fill="#c62a1c">⚠ amount  18,4→18,2</text>
+            <text x="380" y="130" text-anchor="middle" font-size="10" fill="#c62a1c">⚠ net_amount  ×1.08 (not ×0.90)</text>
+            <!-- tier tags on shared_b -->
+            <rect x="480" y="90" width="86" height="15" rx="7" fill="#E3F6EE" stroke="#00A972" stroke-width="1"/>
+            <text x="523" y="101" text-anchor="middle" font-size="8.5" font-weight="800" fill="#00754f">Tier 1 · det</text>
+            <rect x="480" y="120" width="86" height="15" rx="7" fill="#EFEAF9" stroke="#8A63D2" stroke-width="1"/>
+            <text x="523" y="131" text-anchor="middle" font-size="8.5" font-weight="800" fill="#5b3fa0">Tier 2 · LLM</text>
+            <!-- branch_c (clean) -->
+            <rect x="125" y="180" width="170" height="46" rx="10" fill="#eef2f4" stroke="#1B3139" stroke-width="1.5"/>
+            <text x="210" y="200" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">branch_c</text>
+            <text x="210" y="215" text-anchor="middle" font-size="9" fill="#5A6B72">clean passthrough · no sku</text>
+            <!-- branch_d (distractor) -->
+            <rect x="465" y="180" width="185" height="46" rx="10" fill="#FFF3D6" stroke="#E0A100" stroke-width="1.6"/>
+            <text x="557" y="200" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1B3139">branch_d</text>
+            <text x="557" y="215" text-anchor="middle" font-size="9" fill="#8a5b00">⚠ sku lower()+space · arm D only</text>
+            <!-- leaf_e -->
+            <rect x="125" y="256" width="170" height="48" rx="11" fill="#E3F6EE" stroke="#00A972" stroke-width="1.7"/>
+            <text x="210" y="276" text-anchor="middle" font-size="11.5" font-weight="800" fill="#1B3139">leaf_e_tgt</text>
+            <text x="210" y="291" text-anchor="middle" font-size="9" fill="#00754f">reconciled · NO sku</text>
+            <!-- leaf_f -->
+            <rect x="465" y="256" width="185" height="48" rx="11" fill="#E3F6EE" stroke="#00A972" stroke-width="1.7"/>
+            <text x="557" y="276" text-anchor="middle" font-size="11.5" font-weight="800" fill="#1B3139">leaf_f_tgt</text>
+            <text x="557" y="291" text-anchor="middle" font-size="9" fill="#00754f">reconciled · has sku</text>
+            <!-- report_e / report_f (downstream = blast radius) -->
+            <rect x="135" y="318" width="150" height="34" rx="9" fill="#eef2f4" stroke="#5A6B72" stroke-width="1.2"/>
+            <text x="210" y="339" text-anchor="middle" font-size="10" font-weight="700" fill="#5A6B72">report_e · downstream</text>
+            <rect x="480" y="318" width="150" height="34" rx="9" fill="#eef2f4" stroke="#5A6B72" stroke-width="1.2"/>
+            <text x="555" y="339" text-anchor="middle" font-size="10" font-weight="700" fill="#5A6B72">report_f · downstream</text>
+            <!-- src boxes -->
+            <rect x="8" y="256" width="110" height="48" rx="10" fill="#E6F0F7" stroke="#2272B4" stroke-width="1.5"/>
+            <text x="63" y="276" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1B3139">leaf_e_src</text>
+            <text x="63" y="291" text-anchor="middle" font-size="8.5" fill="#2272B4">source of truth</text>
+            <rect x="660" y="256" width="92" height="48" rx="10" fill="#E6F0F7" stroke="#2272B4" stroke-width="1.5"/>
+            <text x="706" y="276" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1B3139">leaf_f_src</text>
+            <text x="706" y="291" text-anchor="middle" font-size="8.5" fill="#2272B4">source of truth</text>
+            <!-- legend -->
+            <text x="8" y="360" font-size="9.5" fill="#c62a1c">– – reconciled against each leaf   ·   grey arrows = data flow (blast radius: leaf → report)</text>
           </g>
         </svg>
       </div>
@@ -478,56 +495,57 @@
       <!-- How the RCA behaves -->
       <div class="points">
         <h4>⚙️ How the RCA behaves</h4>
-        <div class="point"><span class="ic">1</span><div><b>Ingest the flagged mismatches</b><p>Reads the reconcile output — the columns/rows that differ on each gold leaf.</p></div></div>
-        <div class="point"><span class="ic">2</span><div><b>Fingerprint each difference</b><p>A probe + the Snowflake knowledge base assign a category (precision, timezone, string, volume…).</p></div></div>
-        <div class="point"><span class="ic">3</span><div><b>Confirm on real rows</b><p>A live drill-down query must agree before any verdict is trusted.</p></div></div>
-        <div class="point"><span class="ic">4</span><div><b>Walk lineage upstream</b><p>Hop by hop past the leaf to the layer where the difference <i>actually entered</i>.</p></div></div>
-        <div class="point"><span class="ic">5</span><div><b>Collapse shared causes</b><p>Differences tracing to the same upstream defect cluster into one root cause.</p></div></div>
-        <div class="point"><span class="ic">6</span><div><b>Cite the code & propose a fix</b><p>Reads the migrated SQL for the exact transform, then suggests a dry-run-validated fix.</p></div></div>
+        <div class="point"><span class="ic">1</span><div><b>Ingest the flagged mismatches</b><p>Reads the reconcile output for both leaves — <code>amount</code>, <code>net_amount</code> (both) and <code>sku</code> (leaf_f only).</p></div></div>
+        <div class="point"><span class="ic">2</span><div><b>Fingerprint each difference</b><p>Probes + KB catch <code>amount</code> → <b>type_precision</b> and <code>sku</code> → <b>string_format</b>. <code>net_amount</code> → no match.</p></div></div>
+        <div class="point"><span class="ic">3</span><div><b>Confirm on real rows (Tier 1)</b><p>Drill-down confirms the scale loss and the lower()+space — 3 findings resolved deterministically, no LLM.</p></div></div>
+        <div class="point"><span class="ic">4</span><div><b>Residual → LLM fallback (Tier 2)</b><p>Both <code>net_amount</code> residuals go to Claude, which proposes the tax-vs-discount hypothesis <b>and a confirming query</b>; promoted only when it passes.</p></div></div>
+        <div class="point"><span class="ic">5</span><div><b>Walk lineage upstream — column-scoped</b><p>Each column walks back 3 hops to <code>raw_a</code>. <code>leaf_e.amount</code> never crosses into arm D, so the sku distractor <b>can't leak</b>.</p></div></div>
+        <div class="point"><span class="ic">6</span><div><b>Cluster, blast-radius & fix</b><p><code>amount</code> collapses across both leaves to one shared root; each leaf's <code>report_*</code> consumer sets the blast radius; a dry-run-validated fix is attached.</p></div></div>
       </div>
     </div>
 
     <!-- What it captures, by feature -->
-    <div class="steps-h">🔍 What it captures — and the feature that catches it</div>
+    <div class="steps-h">🔍 What it captures — and the tier that resolves it</div>
     <p class="lead" style="margin:6px 0 14px">Read this left-to-right: the <b>symptom</b> the recon flags on a leaf, the
-      <b>feature</b> that captures & explains it, and the <b>upstream layer</b> where the problem really lives.</p>
+      <b>tier + feature</b> that resolves it, and the <b>upstream layer</b> where the problem really lives. All numbers below are
+      from the live run above (500 rows per leaf).</p>
     <div style="overflow-x:auto">
     <table class="ltable">
       <thead><tr>
-        <th>Symptom on the reconciled leaf</th><th>Category</th><th>Captured &amp; explained by</th>
+        <th>Symptom on the reconciled leaf</th><th>Category</th><th>Resolved by</th>
         <th>Upstream cause — where it enters</th><th>Verdict / fix</th>
       </tr></thead>
       <tbody>
         <tr>
-          <td><code>gold_c.amount</code> &amp; <code>gold_d.amount</code> off by cents</td>
+          <td><code>leaf_e.amount</code> &amp; <code>leaf_f.amount</code> off in the 3rd–4th decimal (all 500 rows each)</td>
           <td>🔢 type_precision</td>
-          <td>numeric probe → live drill-down → <b>lineage trace-back</b> → <b>clustering</b> (both leaves) + code-aware cite</td>
-          <td class="up">orders_enriched — <code>cast(amount AS DECIMAL(18,2))</code> (loses 18,4→18,2), 2 hops up</td>
+          <td><b>Tier 1 · deterministic</b> — numeric probe → drill-down → <b>trace-back</b> → <b>clustering</b> (both leaves)</td>
+          <td class="up">shared_b — <code>cast(amount AS DECIMAL(18,2))</code> loses (18,4), 3 hops up</td>
           <td><span class="badge2 mig">🔧 migration</span></td>
         </tr>
         <tr>
-          <td><code>gold_c.order_ts</code> &amp; <code>gold_d.order_ts</code> shifted 5.5h</td>
-          <td>🕐 timezone</td>
-          <td>temporal probe → drill-down → <b>trace-back</b> → clustering + <b>validated fix</b></td>
-          <td class="up">orders_enriched — <code>+ make_interval(…5,30)</code>, no UTC normalization, 2 hops up</td>
-          <td><span class="badge2 mig">🔧 migration</span> · fix <span class="badge2 ok">✅</span></td>
+          <td><code>leaf_e.net_amount</code> &amp; <code>leaf_f.net_amount</code> — e.g. 46.23 vs 55.48 (gross 51.37)</td>
+          <td>❓→🔧 transpilation</td>
+          <td><b>Tier 2 · LLM fallback</b> — no probe → needs-review → <b>Claude Opus 5</b> hypothesis + <b>confirming query</b></td>
+          <td class="up">shared_b — <code>round(gross×1.08,2)</code> (8% tax) instead of source <code>×0.90</code> (10% discount), 3 hops up</td>
+          <td><span class="badge2 mig">🔧 migration</span> · query-confirmed</td>
         </tr>
         <tr>
-          <td><code>gold_c.sku</code> lower-cased + trailing space</td>
+          <td><code>leaf_f.sku</code> lower-cased + trailing spaces (all 500 rows)</td>
           <td>🔤 string_format</td>
-          <td>string probe → drill-down → trace-back with <b>distractor isolation</b></td>
-          <td class="up">orders_curated_c — <code>concat(lower(sku),' ')</code>, arm C only (1 hop up)</td>
+          <td><b>Tier 1 · deterministic</b> — string probe → drill-down → trace-back, <b>arm-D only</b></td>
+          <td class="up">branch_d — <code>concat(lower(sku),'  ')</code>, arm D only (isolated)</td>
           <td><span class="badge2 mig">🔧 migration</span></td>
         </tr>
         <tr>
-          <td><code>gold_d</code> — 30 rows missing</td>
-          <td>➖ volume_missing</td>
-          <td>key anti-join → <b>table lineage</b> → back-fill fix</td>
-          <td class="up">orders_curated_d — load watermark drops <code>order_id&gt;470</code>, arm D only</td>
-          <td><span class="badge2 mig">🔧 migration</span> · fix <span class="badge2 ok">✅</span></td>
+          <td><code>leaf_e</code> — <b>no</b> sku finding surfaced</td>
+          <td>🛡 isolation</td>
+          <td><b>Sibling isolation</b> — column-scoped lineage keeps arm D's distractor out of arm C</td>
+          <td class="up2">n/a — arm C has no sku; the walk never crosses siblings</td>
+          <td><span class="badge2 ok">✅ no leakage</span></td>
         </tr>
         <tr>
-          <td><code>customer_id · status · region</code> — unchanged</td>
+          <td><code>gross_amount · qty</code> — unchanged on both arms</td>
           <td>—</td>
           <td>probes + drill-down find no signal → <b>clean control</b></td>
           <td class="up2">none — untouched through every layer</td>
@@ -536,42 +554,43 @@
       </tbody>
     </table>
     </div>
-    <p class="lead" style="margin:14px 0 0"><b>The takeaway:</b> only the two gold tables were reconciled, but <b>none of the six
-      issues originate there.</b> Four of them (both <code>amount</code> + both <code>order_ts</code>) collapse to a
-      <b>single upstream defect in <span class="up">orders_enriched</span></b>; the other two are arm-specific. Fixing one enrichment
-      step clears four findings across two tables — which reconciliation alone could never tell you.</p>
+    <p class="lead" style="margin:14px 0 0"><b>The takeaway:</b> reconciliation flagged five columns across two leaves and stopped there.
+      ReconResolve resolves three <b>deterministically</b> (two precision + one string), hands the two <b>net_amount</b> residuals to
+      <b>Claude</b> — which <i>proves</i> the tax-vs-discount regression with an executed reconstruction query — traces every one
+      <b>3 hops back to the shared transform</b>, <b>clusters</b> the amount defect across both leaves, and <b>never leaks</b> arm D's
+      sku distractor into arm C. One bed, the whole feature set — query-backed end to end.</p>
   </div>
 </section>
 
 <!-- TWO TIERS WORKED EXAMPLE -->
 <section style="background:var(--oat-2)">
   <div class="wrap">
-    <div class="eyebrow">Deterministic first · agentic fallback · proven live</div>
-    <h2>Two tiers on one payments migration — the mechanical fix vs. the judgement call</h2>
-    <p class="lead">A retail <b>payments</b> table migrates Snowflake → Databricks. Reconciliation flags two
-      columns. One has a clean fingerprint and is graded <b>deterministically</b>; the other is a silent
-      <b>business-logic regression</b> no probe can name, so it is handed to <b>Claude</b>, which proposes a
+    <div class="eyebrow">Zoom in · same diamond run, under the hood</div>
+    <h2>The two tiers, side by side — the mechanical fix vs. the judgement call</h2>
+    <p class="lead">Same run as above, on <code>leaf_f</code>. Here are two of its flagged columns side by side:
+      <code>amount</code> has a clean fingerprint and is graded <b>deterministically</b>; <code>net_amount</code> is a
+      silent <b>business-logic regression</b> no probe can name, so it is handed to <b>Claude</b>, which proposes a
       hypothesis <b>and a confirming query</b> — and only promotes the verdict if that query passes.</p>
 
     <div class="provenote">
-      <b>✅ Verified live</b> — <code>recon_id 9253e330…4803e</code> on
-      <code>mig_demo_payments</code>, Foundation Model endpoint <code>databricks-claude-opus-5</code>.
-      500 rows · join <code>payment_id</code>. Clean controls (<code>customer_id, gross_amount, currency, status</code>)
-      produced no finding.
+      <b>✅ Verified live</b> — <code>recon_id 1d046403…f5b1</code> on
+      <code>mig_demo_diamond_deep</code>, Foundation Model endpoint <code>databricks-claude-opus-5</code>.
+      500 rows/leaf · join <code>a_id</code>. Clean controls (<code>gross_amount, qty</code>) produced no finding;
+      <code>leaf_e</code> produced no <code>sku</code> finding (sibling isolation held).
     </div>
 
     <div class="split">
       <div class="panel det">
-        <div class="ph">🧮 Tier 1 · Deterministic <span class="cap">— payment_ts</span></div>
+        <div class="ph">🧮 Tier 1 · Deterministic <span class="cap">— amount</span></div>
         <div class="pc">
-          <div class="cs"><code>payment_ts</code> differs on all 500 rows by a constant +5:30</div>
+          <div class="cs"><code>amount</code> differs on all 500 rows — e.g. <code>1.9134 → 1.91</code></div>
           <ul>
-            <li>The temporal <b>probe</b> recognizes the constant, known offset → category <b>timezone</b>.</li>
-            <li>A live <b>drill-down</b> query confirms the shift holds on the flagged rows.</li>
-            <li>Root cause: the migrated load never normalized the session timezone to UTC.</li>
-            <li><b>Fix</b>: "normalize to UTC on load" — a runnable, gate-validated suggestion.</li>
+            <li>The numeric <b>probe</b> sees values equal after rounding to scale 2 → category <b>type_precision</b>.</li>
+            <li>A live <b>drill-down</b> query confirms the pattern holds on the flagged rows.</li>
+            <li>Root cause: <code>cast(amount AS DECIMAL(18,2))</code> at <code>shared_b</code> drops the source (18,4) scale.</li>
+            <li><b>Clusters</b> with <code>leaf_e.amount</code> — one shared root, one fix clears both.</li>
           </ul>
-          <div class="out">verdict → 🔧 timezone / migration_induced
+          <div class="out">verdict → 🔢 type_precision / migration_induced
 no LLM involved · repeatable · cheap · same result every run</div>
         </div>
       </div>
@@ -579,26 +598,27 @@ no LLM involved · repeatable · cheap · same result every run</div>
       <div class="panel agent">
         <div class="ph">🤖 Tier 2 · LLM fallback <span class="cap">— net_amount</span></div>
         <div class="pc">
-          <div class="cs"><code>net_amount</code> differs — but by no offset, rounding, scale, or string pattern</div>
+          <div class="cs"><code>net_amount</code> differs — e.g. <code>46.23 vs 55.48</code> (gross 51.37) — no scale/rounding pattern</div>
           <ul>
             <li>Source rule: <code>net = round(gross×0.90,2)</code> (10% discount). Target shipped
-              <code>round(gross×1.08,2)</code> (8% tax) — ratio ≈ 0.83, <b>not</b> a clean factor.</li>
+              <code>round(gross×1.08,2)</code> (8% tax) — target/source ≈ 1.20, <b>not</b> a clean scale factor.</li>
             <li>No probe fingerprints it → the deterministic tier is honest: <b>needs-review / unknown</b>.</li>
-            <li>Claude (Opus&nbsp;5) gets the <b>evidence bundle</b> (samples + the migrated derivation), back-solves
+            <li>Claude (Opus&nbsp;5) gets the <b>evidence bundle</b> (samples + lineage + the migrated derivation), back-solves
               <b>both</b> formulas, and writes an <b>exact-reconstruction</b> confirming query.</li>
             <li>The query runs and passes → promoted to <b>transpilation / migration_induced</b>.</li>
           </ul>
-          <div class="out">Claude's confirming query (executed, returned confirmed=TRUE):
-count_if(NOT (t.net_amount &lt;=&gt; ROUND(s.gross_amount*1.08,2))) = 0   -- target uses ×1.08
-AND count_if(NOT (s.net_amount &lt;=&gt; ROUND(s.gross_amount*0.90,2))) = 0  -- source used ×0.90
+          <div class="out">Claude's confirming query (executed live, returned confirmed=TRUE):
+count_if(NOT (t.net_amount &lt;=&gt; CAST(ROUND(s.gross_amount*1.08,2) AS DECIMAL(18,4)))) = 0   -- target uses ×1.08
+AND count_if(NOT (s.net_amount &lt;=&gt; CAST(ROUND(s.gross_amount*0.9,2) AS DECIMAL(18,4)))) = 0  -- source used ×0.90
+AND count_if(NOT (t.net_amount &lt;=&gt; s.net_amount)) &gt; 0                                        -- and they really differ
 → 🔧 transpilation / migration_induced — the changed rate constant, query-proven</div>
         </div>
       </div>
     </div>
 
-    <div class="gatenote">🔒 <b>The gate held, live:</b> Claude's <i>first</i> hypothesis used a ratio heuristic and
-      its query returned <code>confirmed=FALSE</code> → the finding <b>stayed needs-review</b>. Only the exact
-      reconstruction promoted it. <b>The query is the gate — never an LLM guess.</b></div>
+    <div class="gatenote">🔒 <b>The gate is the query, not the model:</b> the verdict is promoted <i>only</i> because the executed
+      confirming query returned <code>confirmed=TRUE</code>. Had it returned <code>FALSE</code>, the finding would have
+      <b>stayed needs-review</b> — no matter how confident the hypothesis. <b>The query is the gate — never an LLM guess.</b></div>
 
     <!-- decision flow -->
     <div class="tflow">
@@ -607,13 +627,13 @@ AND count_if(NOT (s.net_amount &lt;=&gt; ROUND(s.gross_amount*0.90,2))) = 0  -- 
         <span class="tf-dec">◆ does a probe fingerprint it?</span>
       </div>
       <div class="tf-lane det"><span class="yn">YES</span> live drill-down confirms it on real rows
-        <span class="tf-arrow">→</span> <b>🔧 verdict</b> <em>Tier 1 · deterministic (payment_ts)</em></div>
+        <span class="tf-arrow">→</span> <b>🔧 verdict</b> <em>Tier 1 · deterministic (amount, sku)</em></div>
       <div class="tf-lane agent"><span class="yn no">NO</span> Claude proposes a hypothesis + a confirming query
         <span class="tf-arrow">→</span> ◆ query confirms?
         <span class="tf-arrow">→</span> <b>🔧 verdict</b> &nbsp;·&nbsp; else <b>🔍 needs-review</b> <em>Tier 2 · agentic (net_amount)</em></div>
     </div>
 
-    <p class="lead" style="margin:13px 0 0"><b>Why it matters:</b> the timezone bug is a known mechanical defect —
+    <p class="lead" style="margin:13px 0 0"><b>Why it matters:</b> the precision loss is a known mechanical defect —
       caught cheaply and repeatably with zero LLM. The tax-vs-discount regression is exactly the kind of silent,
       business-logic drift that slips through migrations and manual review; the LLM names it and <i>proves</i> it with
       an executed query. Deterministic where it can be; agentic where it must be; query-gated always.</p>
@@ -679,7 +699,7 @@ const STAGES = [
     kicker:"Stage 3b · optional", short:"sqlglot reads your source & target SQL.",
     what:"When you supply source (original-dialect) and target (migrated) scripts via a manifest, sqlglot parses per-column derivations and declared types, then cites the exact transform that caused a mismatch (e.g. <code>cast(amount AS DECIMAL(18,2))</code>, <code>+ 5:30</code>).",
     why:"Turns 'the values differ' into 'this line of SQL did it' — the strongest possible evidence.",
-    files:["rca_engine/lakebridge.py","migration/demo_diamond/table_manifest.yml"]},
+    files:["rca_engine/lakebridge.py","migration/demo_diamond_deep/table_manifest.yml"]},
   {id:"drilldown", num:"4", ico:"🔎", title:"Live drill-down", lane:"main", tags:["det","live"],
     kicker:"Stage 4", short:"Confirm each hypothesis on real rows.",
     what:"Issues targeted confirming queries (scoped to flagged keys by default) — e.g. 'do values match after rounding to scale 2?' — and promotes a verdict only when the query agrees.",
@@ -692,8 +712,8 @@ const STAGES = [
     files:["rca_engine/drift.py"]},
   {id:"lineage", num:"6", ico:"🧭", title:"UC lineage trace-back", lane:"enrich", tags:["det","lineage","live"],
     kicker:"Stage 6 · enrichment", short:"Walk upstream, hop by hop, to the root layer.",
-    what:"Depth-agnostic: from the reconciled leaf it walks <code>system.access.column_lineage</code> (then table lineage) hop by hop to the roots, so a defect injected N layers upstream is pointed at directly — not just the target.",
-    why:"In the demo it pins the amount/tz defect to <b>orders_enriched</b>, 2 hops above the reconciled leaf.",
+    what:"Depth-agnostic: from the reconciled mart it walks <code>system.access.column_lineage</code> (then table lineage) hop by hop to the roots, so a defect injected N layers upstream is pointed at directly — not just the target.",
+    why:"In the deep-diamond demo it pins <code>amount</code>, <code>net_amount</code> and <code>sku</code> back 3 hops to <code>shared_b</code> / <code>branch_d</code> — and keeps arm C free of arm D's sku distractor.",
     files:["rca_engine/lineage.py"]},
   {id:"blast", num:"7", ico:"💥", title:"Downstream blast-radius", lane:"enrich", tags:["det","lineage","live"],
     kicker:"Stage 7 · enrichment", short:"Which tables consume this one?",
@@ -703,7 +723,7 @@ const STAGES = [
   {id:"cluster", num:"8", ico:"🧨", title:"Systemic clustering", lane:"main", tags:["det"],
     kicker:"Stage 8", short:"Fix one, resolve many.",
     what:"Groups findings that share one mechanism (a mistranslated expression, one category concentrated in a table, a shared upstream root) into clusters so the report leads with the single fix that clears the most.",
-    why:"In the demo, amount+order_ts across both leaves collapse into 2 root causes, not 4 tickets.",
+    why:"Findings sharing one upstream root — e.g. leaf_e.amount + leaf_f.amount both entering at shared_b — collapse into a single root cause, not separate tickets.",
     files:["rca_engine/cluster.py"]},
   {id:"fixes", num:"9", ico:"🛠️", title:"Fix + validation gate", lane:"main", tags:["det","live"],
     kicker:"Stage 9", short:"Runnable remediation, dry-run confirmed.",
@@ -827,24 +847,24 @@ const CONFIG_BY_STAGE = {
   output:["output_dir","combined_notebook","audit_table"],
 };
 
-/* per-stage example output (real lines from the diamond demo run) */
+/* per-stage example output (real lines from the deep-diamond demo run) */
 const EXAMPLE_BY_STAGE = {
-  "entry-skill":`Prompt: "Run RCA on recon_id 7d786327…; for orders_gold_c.amount\nshow the upstream lineage trace-back and propose a fix."`,
-  "entry-app":`POST /api/recon/trigger {source_schema, target_schema, pairs}\n→ recon_id 7d786327…  →  GET /api/runs/{id}  (dashboard)`,
-  "entry-cli":`python -m rca_engine.cli --recon-id 7d786327… \\\n  --recon-catalog fevm_…_catalog --recon-schema reconcile \\\n  --use-lineage --table-manifest migration/demo_diamond/table_manifest.yml`,
-  reconcile:`recon_id 7d786327137d44c9bef3f2bc75fba518\norders_src → orders_gold_c / orders_gold_d   join: order_id (provided)`,
-  ingest:`6 findings across 2 pairs:\n gold_c.amount · gold_c.order_ts · gold_c.sku\n gold_d.amount · gold_d.order_ts · gold_d (30 missing rows)`,
-  classify:`orders_gold_c.amount → 🔢 type_precision (98%)\n "values equal after rounding to scale 2 — likely NUMBER(p,s) → lower s"`,
-  codeaware:`cites target transform:\n  amount   ← cast(amount AS DECIMAL(18,2))\n  order_ts ← order_ts + make_interval(0,0,0,0,5,30,0)`,
-  drilldown:`confirm (scoped to flagged keys):\n  round(src.amount,2) = tgt.amount  →  TRUE  →  verdict promoted 🔧`,
-  drift:`amount: src stddev≈ tgt stddev, null-rate 0%↔0%\n  → stable distribution ⇒ precision, not a genuine data change`,
-  lineage:`Lineage trace-back (3 hops to root orders_raw):\n gold_c.amount ← curated_c.amount ← enriched.amount ← raw.amount\n ⇒ defect entered at orders_enriched`,
-  blast:`Blast radius: orders_enriched feeds curated_c, curated_d,\n gold_c, gold_d — prioritize the fix & re-validate consumers`,
-  cluster:`Cluster "SQL translation via cast" — 🔢 type_precision\n 2 findings · 961 rows · gold_c.amount, gold_d.amount`,
-  fixes:`order_ts → "Normalize to UTC on load"        ✅ validated (70%)\n amount   → "match source precision/scale"     suggested (50%)\n missing  → "back-fill filtered rows"           ✅ validated (60%)`,
-  llm:`residual order_ts (before tz-probe fix):\n LLM: "constant +5:30 offset?" + confirming query → TRUE\n → promoted to 🕐 timezone / migration_induced`,
-  memory:`records signature: snowflake | type_precision | scale_delta=2\n → next migration auto-proposes this cause (still query-confirmed)`,
-  output:`rca_7d786327…/\n  00_index.ipynb · orders_gold_c.ipynb · orders_gold_d.ipynb\n  rca_7d786327….json · SUMMARY.md   + audit rows appended`,
+  "entry-skill":`Prompt: "Run RCA on recon_id 1d046403…; for leaf_e.net_amount\nshow the upstream lineage trace-back and propose a fix."`,
+  "entry-app":`POST /api/recon/trigger {source_schema, target_schema, pairs}\n→ recon_id 1d046403…  →  GET /api/runs/{id}  (dashboard)`,
+  "entry-cli":`python -m rca_engine.cli --recon-id 1d046403… \\\n  --recon-catalog fevm_…_catalog --recon-schema reconcile \\\n  --use-lineage --table-manifest migration/demo_diamond_deep/table_manifest.yml`,
+  reconcile:`recon_id 1d04640331554f61874b47299b08f5b1\nleaf_e_src → leaf_e_tgt · leaf_f_src → leaf_f_tgt   join: a_id (provided)`,
+  ingest:`5 findings across 2 pairs:\n leaf_e.amount · leaf_e.net_amount\n leaf_f.amount · leaf_f.net_amount · leaf_f.sku`,
+  classify:`leaf_*.amount → 🔢 type_precision\n leaf_f.sku    → 🔤 string_format\n leaf_*.net_amount → ❓ unknown — no fingerprint ⇒ needs-review`,
+  codeaware:`cites target transform:\n  amount     ← cast(amount AS DECIMAL(18,2))\n  net_amount ← round(gross_amount * 1.08, 2)\n  sku(leaf_f)← concat(lower(sku), '  ')`,
+  drilldown:`confirm (scoped to flagged keys):\n  round(s.amount,2) = t.amount  →  TRUE  →  🔢 promoted`,
+  drift:`net_amount: systematic ~1.20x src↔tgt shift, null-rate 0%↔0%\n  → not a clean pattern ⇒ hand the residual to Tier 2`,
+  lineage:`Lineage trace-back (3 hops to root raw_a):\n leaf_e.amount ← branch_c.amount ← shared_b.amount ← raw_a.amount\n ⇒ defect entered at shared_b`,
+  blast:`Blast radius: leaf_e feeds report_e · leaf_f feeds report_f\n — prioritize the shared_b fix & re-validate consumers`,
+  cluster:`Cluster "SQL translation via cast" — 🔢 type_precision\n 2 findings · leaf_e.amount, leaf_f.amount`,
+  fixes:`amount → "match source precision/scale"            suggested\n sku    → "normalize case / trim whitespace"       suggested\n net    → "restore ×0.90 discount (not ×1.08 tax)"  suggested`,
+  llm:`residual net_amount (no probe fingerprint):\n Claude (Opus 5): "target=round(gross×1.08,2), source=round(gross×0.90,2)?" + query → TRUE\n → promoted to 🔧 transpilation / migration_induced`,
+  memory:`records signature: snowflake | transpilation | rate_change\n → next migration auto-proposes this cause (still query-confirmed)`,
+  output:`rca_1d046403…/\n  00_index.ipynb · leaf_e_tgt.ipynb · leaf_f_tgt.ipynb\n  rca_1d046403….json · SUMMARY.md   + audit rows appended`,
 };
 
 /* connector edges: [from, to, dashed?] */

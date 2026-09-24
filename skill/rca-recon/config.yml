@@ -84,6 +84,11 @@ combined_notebook: false
 #     join_keys: [order_id]               # optional override
 #     date_column: order_ts               # optional override
 
+# Code-aware artifacts are supplied PER RUN by the driver via transpiled_output_dir (the
+# migrated Databricks SQL for that recon), so the deployed skill stays demo-agnostic. To
+# pin artifacts here instead, set transpiled_output_dir above or add a per-table `tables:`
+# manifest (target/source/target_script/join_keys) — see the commented example above.
+
 # Optional: use Unity Catalog lineage (system.access.column_lineage / table_lineage)
 # as an extra evidence source — confirms a column's true upstream provenance and the
 # upstream tables feeding a target (helps locate where a volume/drift cause entered).
@@ -94,11 +99,25 @@ combined_notebook: false
 # hop by hop (column lineage where a column is known, table lineage otherwise) to the root
 # layer, so a defect that entered several layers upstream (e.g. an intermediate staging /
 # transform table) is pointed at directly — not just the reconciled target.
-use_uc_lineage: false
+use_uc_lineage: true
 
 # Max depth of the lineage trace-back walk (safety budget against very deep / cyclic
 # graphs). Increase for deeper pipelines; the walk stops early at the roots anyway.
 max_lineage_hops: 10
+
+# Optional: JOB-LEVEL source-column trace. Reconciliation works at the table level; this
+# goes one level up to the ETL JOB that builds the target. For each column mismatch it
+# finds that job (from system.access.table_lineage, or set job_id below), exports its
+# notebook SQL, parses it with sqlglot, and traces the mismatching column back to its TRUE
+# source columns (the transform at every hop) — then attaches a runnable reproduction query
+# that recomputes the value from source for the sampled row. Complements use_uc_lineage
+# (UC metadata) with the actual SQL-derived "why". Needs the Databricks SDK + workspace
+# access; degrades gracefully to nothing if unavailable. Off by default.
+trace_job: false
+
+# Pin the building job (id or name) for trace_job when system-table discovery isn't
+# available; leave blank to auto-discover from lineage.
+# job_id:
 
 # Distribution-drift quantification. For every column mismatch, measure the source-vs-
 # target null-rate, cardinality, and numeric summary (min/max/mean/stddev) and report

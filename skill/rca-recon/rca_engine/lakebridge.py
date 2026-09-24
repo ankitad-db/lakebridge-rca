@@ -62,6 +62,7 @@ class TableMapping:
     source_types: dict[str, str] = field(default_factory=dict)   # source col (lower) -> declared type
     source_filter: str = ""
     target_filter: str = ""
+    from_sql: str = ""   # the target SELECT's FROM + JOINs (so joined lookup tables are known)
     transpile_issues: list[TranspileIssue] = field(default_factory=list)
     # --- extra Lakebridge reconcile-config features (customize what/how recon compares) ---
     recon_transforms: dict[str, dict[str, str]] = field(default_factory=dict)  # col(lower) -> {source, target}
@@ -184,11 +185,16 @@ def parse_transpiled_sql(sql_text: str, read: str = "databricks") -> dict[str, T
             tgt_key = _short(tgt_tbl.name)
             mapping = out.setdefault(tgt_key, TableMapping(target_table=tgt_tbl.sql()))
 
-            frm = select.args.get("from")
+            frm = select.args.get("from") or select.find(exp.From)
             if frm is not None:
                 src = frm.find(exp.Table)
                 if src is not None:
                     mapping.source_table = src.sql()
+                # capture FROM + JOINs so a reconstruction can resolve joined lookup tables
+                if not mapping.from_sql:
+                    parts = [frm.sql(dialect=read)]
+                    parts += [j.sql(dialect=read) for j in (select.args.get("joins") or [])]
+                    mapping.from_sql = " ".join(parts)
             where = select.args.get("where")
             if where is not None and not mapping.target_filter:
                 mapping.target_filter = where.this.sql(dialect=read)
@@ -271,6 +277,7 @@ def parse_transpiled_dir(path: str | Path) -> dict[str, TableMapping]:
                     merged[k].transforms.update(m.transforms)
                     merged[k].source_table = merged[k].source_table or m.source_table
                     merged[k].target_filter = merged[k].target_filter or m.target_filter
+                    merged[k].from_sql = merged[k].from_sql or m.from_sql
         except Exception:
             continue
     return merged

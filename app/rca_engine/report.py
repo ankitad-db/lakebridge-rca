@@ -378,6 +378,11 @@ def _signal(f: Finding) -> str:
         return f"**row-level** — {f.mismatch_count} rows present in target but not in source (of {total})"
     if rt == "schema":
         return f"**schema-level** — {f.mismatch_count} column datatype difference(s) reported by recon"
+    if rt == "aggregate":
+        md = f.metadata or {}
+        return (f"**aggregate-level** — rule `{md.get('rule', f.column)}`: "
+                f"mismatch={md.get('mismatch', 0)}, missing_in_source={md.get('missing_in_source', 0)}, "
+                f"missing_in_target={md.get('missing_in_target', 0)} group(s)")
     return f"recon `{rt}`, {f.mismatch_count} of {total} rows"
 
 
@@ -406,6 +411,27 @@ def _provenance(h) -> str:
     return " · ".join(used)
 
 
+def _transform_logic(f: Finding) -> str | None:
+    """Pull the migrated target derivation for this column out of the code evidence so
+    it can be shown as a prominent 'Transformation logic' callout. Returns the derivation
+    expression (without the 'Target derivation:' prefix / backticks) or None."""
+
+    h = f.top_hypothesis
+    if not h:
+        return None
+    for e in h.evidence:
+        if e.label != "code" or not e.detail:
+            continue
+        d = e.detail.strip()
+        low = d.lower()
+        if low.startswith("target derivation"):
+            expr = d.split(":", 1)[1].strip() if ":" in d else d
+            return expr.strip().strip("`").strip()
+        if "load filter" in low or "passthrough" in low or "generated" in low:
+            return d.strip("`")
+    return None
+
+
 def _finding_section(f: Finding) -> list[dict[str, Any]]:
     h = f.top_hypothesis
     sym, label, action = _VERDICT.get(h.verdict, ("•", "?", "")) if h else ("•", "?", "")
@@ -415,6 +441,12 @@ def _finding_section(f: Finding) -> list[dict[str, Any]]:
             f"- **Category**: {_cat_label(h.category)}  ·  **Confidence**: {h.confidence:.0%}"
             f"  ·  **Owner**: {h.recommended_owner or '—'}",
             f"- **Signal**: {_signal(f)}",
+        ]
+        deriv = _transform_logic(f)
+        if deriv:
+            col = f.column or _loc(f)
+            header.append(f"- **🔧 Transformation logic** — migrated target derivation: `{col} = {deriv}`")
+        header += [
             f"- **Root cause**: {h.rationale}",
         ]
         if h.remediation:

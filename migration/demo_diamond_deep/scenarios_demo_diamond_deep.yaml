@@ -1,0 +1,119 @@
+# Ground-truth oracle for the DEEP-DIAMOND bed.
+#
+# One recon run, TWO pairs (join a_id):
+#   leaf_e_src -> leaf_e_tgt   (arm C: amount + net_amount; NO sku)
+#   leaf_f_src -> leaf_f_tgt   (arm D: amount + net_amount + sku)
+#
+# Five findings that exercise the whole feature set:
+#   DE1  leaf_e.amount      Tier 1 deterministic (numeric probe: 18,4->18,2 scale loss)
+#   DE2  leaf_e.net_amount  Tier 2 LLM fallback  (business drift: gross*1.08 vs *0.90)
+#   DF1  leaf_f.amount      Tier 1 deterministic (same scale loss — clusters with DE1)
+#   DF2  leaf_f.net_amount  Tier 2 LLM fallback  (same drift — clusters with DE2)
+#   DF3  leaf_f.sku         Tier 1 deterministic (string probe: lower()+trailing space, D arm only)
+#
+# Isolation assertion:
+#   ISO  leaf_e must produce NO sku finding — the D-arm distractor must not leak across the
+#        sibling into arm C (leaf_e has no sku column; column-scoped lineage keeps D out).
+#
+# Fields mirror migration/scenarios.yaml, plus:
+#   trace_root    the root the lineage walk should reach (raw_a_tgt)
+#   trace_hops    expected hop count from the leaf to the root
+#   defect_layer  the layer where the difference was actually injected
+#   tier          which RCA tier is expected to conclude it
+#   cluster       shared-root grouping key (findings with the same key collapse to one root cause)
+#   blast         downstream consumer that makes the fix's blast radius non-empty
+
+scenarios:
+  - id: DE1
+    table: leaf_e_tgt
+    column: amount
+    recon_type: column_mismatch
+    category: type_precision
+    verdict: migration_induced
+    tier: deterministic
+    deployed: true
+    trace_root: raw_a_tgt
+    trace_hops: 3
+    defect_layer: shared_b_tgt
+    cluster: shared_b.amount
+    blast: report_e_tgt
+    mechanism: >
+      amount cast to DECIMAL(18,2) at shared_b loses the source's (18,4) scale. The numeric probe
+      fingerprints it (values equal after rounding to scale 2); drill-down confirms — no LLM.
+
+  - id: DE2
+    table: leaf_e_tgt
+    column: net_amount
+    recon_type: column_mismatch
+    category: transpilation
+    verdict: migration_induced
+    tier: llm_fallback
+    deployed: true
+    trace_root: raw_a_tgt
+    trace_hops: 3
+    defect_layer: shared_b_tgt
+    cluster: shared_b.net_amount
+    blast: report_e_tgt
+    mechanism: >
+      net_amount recomputed as round(gross_amount * 1.08, 2) (8% tax) at shared_b instead of the
+      source rule round(gross_amount * 0.90, 2) (10% discount). No probe fingerprints it -> stays
+      needs-review -> Claude proposes the +8%-tax hypothesis, writes a confirming query
+      (target == round(gross*1.08,2) AND source == round(gross*0.90,2)), runs it, then promotes.
+
+  - id: DF1
+    table: leaf_f_tgt
+    column: amount
+    recon_type: column_mismatch
+    category: type_precision
+    verdict: migration_induced
+    tier: deterministic
+    deployed: true
+    trace_root: raw_a_tgt
+    trace_hops: 3
+    defect_layer: shared_b_tgt
+    cluster: shared_b.amount
+    blast: report_f_tgt
+    mechanism: >
+      Same 18,4->18,2 scale loss as DE1, inherited through arm D. Clusters with DE1 to the single
+      shared_b.amount root cause.
+
+  - id: DF2
+    table: leaf_f_tgt
+    column: net_amount
+    recon_type: column_mismatch
+    category: transpilation
+    verdict: migration_induced
+    tier: llm_fallback
+    deployed: true
+    trace_root: raw_a_tgt
+    trace_hops: 3
+    defect_layer: shared_b_tgt
+    cluster: shared_b.net_amount
+    blast: report_f_tgt
+    mechanism: >
+      Same business drift as DE2 (gross*1.08 vs *0.90), inherited through arm D. Clusters with DE2
+      to the single shared_b.net_amount root cause.
+
+  - id: DF3
+    table: leaf_f_tgt
+    column: sku
+    recon_type: column_mismatch
+    category: string_format
+    verdict: migration_induced
+    tier: deterministic
+    deployed: true
+    trace_root: raw_a_tgt
+    trace_hops: 2
+    defect_layer: branch_d_tgt
+    cluster: branch_d.sku
+    blast: report_f_tgt
+    mechanism: >
+      sku rewritten as concat(lower(sku), '  ') at branch_d (arm D only): lower-cased + two trailing
+      spaces. The string probe fingerprints case/whitespace deterministically; drill-down confirms.
+
+# Isolation control (asserted by the harness, not a finding):
+#   leaf_e_tgt MUST NOT yield any sku finding — arm C has no sku, and the column-scoped lineage
+#   walk on amount/net_amount never crosses into arm D.
+#
+# Clean controls (must produce NO finding):
+#   gross_amount, qty — untouched through every layer on both arms.
