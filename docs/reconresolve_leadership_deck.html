@@ -1,0 +1,522 @@
+<title>ReconResolve</title>
+<meta name="description" content="Post-Lakebridge reconciliation root-cause analysis — leadership brief with architecture, surface fit, the retail demo, and benchmarks.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap">
+<style>
+:root{
+  --paper:#F4F3EF; --surface:#FBFAF7; --surface-2:#EFEDE6;
+  --ink:#1B1E24; --muted:#5C6472; --line:#E4E1D9;
+  --steel:#2B5B8A; --steel-soft:#e7eef5;
+  --heat:#C56A2E; --heat-soft:#f6e9dd;
+  --good:#2E7D5B; --warn:#B9822A; --crit:#B23A2E;
+  --det:#2B5B8A; --agent:#7E4CA8;
+  --shadow:0 1px 2px rgba(27,30,36,.06),0 8px 24px rgba(27,30,36,.06);
+  --radius:14px;
+  --font-display:"Archivo",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+:root:not([data-theme="light"]){ @media (prefers-color-scheme:dark){
+  --paper:#15181D; --surface:#1D2128; --surface-2:#242A33;
+  --ink:#ECEEF1; --muted:#9AA3B2; --line:#2C313A;
+  --steel:#6FA6DB; --steel-soft:#1b2a3a;
+  --heat:#E0925A; --heat-soft:#33251a;
+  --good:#4FB58C; --warn:#E0A648; --crit:#E07A6A;
+  --det:#6FA6DB; --agent:#B98FDD;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  --paper:#15181D; --surface:#1D2128; --surface-2:#242A33;
+  --ink:#ECEEF1; --muted:#9AA3B2; --line:#2C313A;
+  --steel:#6FA6DB; --steel-soft:#1b2a3a;
+  --heat:#E0925A; --heat-soft:#33251a;
+  --good:#4FB58C; --warn:#E0A648; --crit:#E07A6A;
+  --det:#6FA6DB; --agent:#B98FDD;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);line-height:1.6;
+  font-weight:400;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:24px;padding-block:0;}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;line-height:1.12;margin:0;font-weight:700;letter-spacing:-.01em;}
+p{margin:0;max-width:68ch;}
+a{color:var(--steel);}
+.eyebrow{font-family:var(--font-mono);font-size:.72rem;font-weight:500;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--heat);margin:0;}
+.mono{font-family:var(--font-mono);}
+.tnum{font-variant-numeric:tabular-nums;}
+
+/* ---- hero ---- */
+.hero{border-bottom:1px solid var(--line);}
+.hero .wrap{padding-block:64px 52px;}
+.brandrow{display:flex;align-items:center;gap:12px;margin-bottom:40px;}
+.brandmark{width:30px;height:30px;flex:none;}
+.brandname{font-family:var(--font-display);font-weight:700;font-size:1.05rem;letter-spacing:.02em;}
+.brandname .r{color:var(--heat);}
+.hero h1{font-size:clamp(2.4rem,5.6vw,4rem);font-weight:800;letter-spacing:-.025em;}
+.hero .lede{font-size:1.2rem;color:var(--muted);margin-top:22px;max-width:60ch;}
+.hero .lede b{color:var(--ink);font-weight:600;}
+.pipeline{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:34px;font-family:var(--font-mono);
+  font-size:.82rem;color:var(--muted);}
+.pipeline .step{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);}
+.pipeline .step.on{border-color:var(--heat);color:var(--ink);background:var(--heat-soft);font-weight:500;}
+.pipeline .arrow{color:var(--line);}
+
+section{border-bottom:1px solid var(--line);}
+section .wrap{padding-block:56px;}
+.sechead{max-width:64ch;margin-bottom:34px;}
+.sechead h2{font-size:clamp(1.6rem,3.4vw,2.15rem);margin-top:10px;}
+.sechead p{color:var(--muted);margin-top:14px;font-size:1.05rem;}
+
+/* ---- the gap: two columns ---- */
+.gap-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.gap-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow);}
+.gap-card .k{font-family:var(--font-mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+.gap-card h3{font-size:1.2rem;margin:10px 0 12px;}
+.gap-card.before{border-left:3px solid var(--warn);}
+.gap-card.after{border-left:3px solid var(--good);}
+.gap-card p{font-size:.97rem;color:var(--muted);}
+.gap-card p b{color:var(--ink);}
+
+/* ---- tiers ---- */
+.tiers{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:stretch;}
+.tier{border-radius:var(--radius);padding:26px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow);}
+.tier .badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:.74rem;
+  font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px;}
+.tier.det .badge{background:var(--steel-soft);color:var(--steel);}
+.tier.agent .badge{background:color-mix(in srgb,var(--agent) 16%,transparent);color:var(--agent);}
+.tier h3{font-size:1.28rem;margin:14px 0 8px;}
+.tier .sub{color:var(--muted);font-size:.95rem;margin-bottom:16px;}
+.tier ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px;}
+.tier li{display:flex;gap:10px;font-size:.94rem;align-items:flex-start;}
+.tier li svg{flex:none;margin-top:3px;}
+.guard{margin-top:18px;padding:13px 15px;border-radius:10px;background:var(--surface-2);font-size:.9rem;color:var(--muted);}
+.guard b{color:var(--ink);}
+
+/* ---- surface matrix ---- */
+.matrix{width:100%;border-collapse:separate;border-spacing:0;font-size:.94rem;}
+.matrix th,.matrix td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;}
+.matrix thead th{font-family:var(--font-mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500;}
+.matrix tbody th{font-family:var(--font-display);font-weight:600;font-size:1.02rem;white-space:nowrap;}
+.matrix .surf{font-family:var(--font-mono);font-size:.8rem;color:var(--muted);display:block;margin-top:3px;font-weight:400;text-transform:none;letter-spacing:0;}
+.yes{color:var(--good);font-weight:600;} .best{color:var(--heat);font-weight:600;}
+.matrix td small{display:block;color:var(--muted);margin-top:3px;font-size:.82rem;}
+.scenario{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;}
+.scenario .s{border:1px solid var(--line);border-radius:12px;padding:18px 20px;background:var(--surface);}
+.scenario .s .k{font-family:var(--font-mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--heat);}
+.scenario .s h3{font-size:1.05rem;margin:8px 0;}
+.scenario .s p{font-size:.9rem;color:var(--muted);}
+.scenario .s .pick{margin-top:10px;font-family:var(--font-mono);font-size:.85rem;color:var(--ink);}
+
+/* ---- demo / agentic wins ---- */
+.wins{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.win{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:22px;box-shadow:var(--shadow);
+  display:flex;flex-direction:column;gap:12px;}
+.win .col{font-family:var(--font-mono);font-weight:600;font-size:.9rem;color:var(--ink);}
+.win .tag{align-self:flex-start;font-family:var(--font-mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--agent) 15%,transparent);color:var(--agent);font-weight:600;}
+.win pre{margin:0;background:var(--surface-2);border-radius:9px;padding:12px;overflow-x:auto;
+  font-family:var(--font-mono);font-size:.76rem;line-height:1.5;color:var(--ink);border:1px solid var(--line);}
+.win .cause{font-size:.9rem;color:var(--muted);}
+.win .cause b{color:var(--heat);font-weight:600;}
+.win .conf{margin-top:auto;font-family:var(--font-mono);font-size:.78rem;color:var(--good);display:flex;align-items:center;gap:6px;}
+.callout{margin-top:24px;border:1px dashed var(--heat);background:var(--heat-soft);border-radius:12px;padding:16px 20px;
+  font-size:.95rem;display:flex;gap:12px;align-items:flex-start;}
+.callout .mono{color:var(--ink);}
+
+/* ---- benchmarks ---- */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:34px;}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);}
+.tile .n{font-family:var(--font-display);font-weight:800;font-size:2.1rem;letter-spacing:-.02em;line-height:1;}
+.tile .n small{font-size:1rem;font-weight:600;color:var(--muted);}
+.tile .l{font-size:.86rem;color:var(--muted);margin-top:8px;}
+.tile.hl .n{color:var(--heat);}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow);}
+.chart h3{font-size:1.02rem;margin-bottom:4px;}
+.chart .cap{font-size:.84rem;color:var(--muted);margin-bottom:18px;}
+.chart figption,.chart .note{font-size:.78rem;color:var(--muted);margin-top:12px;}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:var(--muted);margin-top:14px;}
+.legend span{display:inline-flex;align-items:center;gap:6px;}
+.dot{width:10px;height:10px;border-radius:3px;display:inline-block;}
+
+/* ---- impact ---- */
+.impact{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.impact .col h3{font-size:1.15rem;margin-bottom:16px;display:flex;align-items:center;gap:10px;}
+.impact ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:14px;}
+.impact li{border-left:2px solid var(--line);padding-left:16px;}
+.impact li b{display:block;font-weight:600;font-size:.98rem;margin-bottom:2px;}
+.impact li span{font-size:.9rem;color:var(--muted);}
+.impact .tech li{border-color:var(--steel);}
+.impact .biz li{border-color:var(--heat);}
+
+footer{padding-block:34px;}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;align-items:center;color:var(--muted);font-size:.85rem;}
+footer .mono{font-family:var(--font-mono);}
+
+/* ---- decision guide ---- */
+.decision{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.dpath{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);overflow:hidden;}
+.dpath .top{padding:16px 20px;font-family:var(--font-display);font-weight:700;font-size:1.05rem;display:flex;align-items:flex-start;gap:11px;border-bottom:1px solid var(--line);}
+.dpath.no .top{background:var(--heat-soft);} .dpath.yes .top{background:var(--steel-soft);}
+.dpath .top .q{display:block;font-size:.68rem;font-family:var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500;margin-top:3px;}
+.dpath .body{padding:20px;display:flex;flex-direction:column;gap:16px;}
+.drow{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;}
+.drow .mode{font-family:var(--font-mono);font-size:.72rem;font-weight:600;min-width:92px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+.drow .rec{font-size:.95rem;flex:1;min-width:180px;} .drow .rec b{color:var(--ink);font-weight:600;}
+.pill{font-family:var(--font-mono);font-size:.78rem;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;margin-right:4px;display:inline-block;color:var(--ink);}
+.dnote{grid-column:1/-1;font-size:.92rem;color:var(--muted);border-left:2px solid var(--heat);padding-left:15px;}
+
+@media(max-width:820px){
+  .decision{grid-template-columns:1fr;}
+  .gap-grid,.tiers,.wins,.charts,.impact,.scenario{grid-template-columns:1fr;}
+  .tiles{grid-template-columns:1fr 1fr;}
+  .matrix thead{display:none;}
+  .matrix tbody th,.matrix td{display:block;border-bottom:none;padding:6px 0;}
+  .matrix tbody tr{display:block;border-bottom:1px solid var(--line);padding:14px 0;}
+}
+@media(prefers-reduced-motion:no-preference){
+  .reveal{animation:rise .6s cubic-bezier(.2,.7,.2,1) both;}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+}
+</style>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="brandrow">
+      <svg class="brandmark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="29" height="29" rx="7" stroke="var(--steel)" stroke-width="1.6"/>
+        <path d="M8 20.5 L13 11 L18 18 L21 13.5 L24.5 20.5" stroke="var(--heat)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="18" cy="18" r="2.1" fill="var(--heat)"/>
+      </svg>
+      <span class="brandname">Recon<span class="r">Resolve</span></span>
+    </div>
+    <p class="eyebrow">Post-Lakebridge reconciliation · root-cause analysis</p>
+    <h1>Reconcile tells you <em>what</em> differs. ReconResolve tells you <em>why</em> — and proves it.</h1>
+    <p class="lede">A migration reconcile flags thousands of mismatched rows and columns. ReconResolve reads the
+      <b>migrated SQL</b>, pinpoints the <b>exact transform and the part that broke</b>, and confirms every verdict
+      with a <b>live query</b> — deterministically by default, with an <b>agentic layer</b> for the hard long tail.</p>
+    <div class="pipeline" aria-label="pipeline">
+      <span class="step">analyze</span><span class="arrow">→</span>
+      <span class="step">transpile</span><span class="arrow">→</span>
+      <span class="step">reconcile</span><span class="arrow">→</span>
+      <span class="step on">RCA · ReconResolve</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="sechead">
+      <p class="eyebrow">The gap</p>
+      <h2>Between "the numbers don't match" and a fix, there's a week of manual detective work.</h2>
+    </div>
+    <div class="gap-grid">
+      <div class="gap-card before">
+        <span class="k">Today · Lakebridge reconcile</span>
+        <h3>A list of differences</h3>
+        <p>Reconcile compares source vs. target and reports <b>which</b> columns and rows differ — e.g.
+          <span class="mono">unit_price differs on 1,844,309 of 2,000,000 rows</span>. Correct, essential — but it
+          stops at the symptom. A migration engineer still has to open the ETL, read the transform, form a
+          hypothesis, and write queries to prove it. Across a star schema that's <b>days per table</b>.</p>
+      </div>
+      <div class="gap-card after">
+        <span class="k">With ReconResolve</span>
+        <h3>The mechanism, the culprit, the proof</h3>
+        <p>For every difference: the <b>category</b> (precision, timezone, boolean, formula…), the exact
+          <b>migrated derivation</b>, the <b>⚠️ likely culprit</b> sub-expression, the <b>source script</b> it came
+          from, a <b>runnable confirming query</b>, and a suggested fix — as a reviewer-ready notebook, in
+          <b>minutes</b>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sechead">
+      <p class="eyebrow">How it works</p>
+      <h2>Two tiers. Every verdict is backed by a query — never a bare model guess.</h2>
+      <p>The deterministic tier concludes the known mechanisms and confirms each with a live query. The agentic
+        tier is entered only for the residual long tail, and a model-proposed cause is promoted <em>only if</em>
+        its confirming query matches.</p>
+    </div>
+    <div class="tiers">
+      <div class="tier det">
+        <span class="badge">Tier 1 · Deterministic</span>
+        <h3>Rule-based, query-confirmed</h3>
+        <p class="sub">No LLM. Reproducible and auditable — the default.</p>
+        <ul>
+          <li>${CHECK} Per-dialect probes classify the mechanism</li>
+          <li>${CHECK} Parses the migrated SQL → the <b>transformation logic</b> + the culprit sub-expression</li>
+          <li>${CHECK} One confirming query per finding; verdict + confidence set from the result</li>
+          <li>${CHECK} Threshold-aware (within-tolerance ⇒ benign), schema & aggregate RCA, suggested fixes</li>
+        </ul>
+        <div class="guard">Runs anywhere — <b>no Genie, no model, no external calls</b>. The whole verdict is a rule plus a query you can re-run.</div>
+      </div>
+      <div class="tier agent">
+        <span class="badge">Tier 2 · Agentic</span>
+        <h3>Foundation-model, query-gated</h3>
+        <p class="sub">Only the residual the rules can't name. Optional.</p>
+        <ul>
+          <li>${SPARK} Reconstructs the migrated derivation from the source columns</li>
+          <li>${SPARK} Proposes the precise cause <b>and a confirming SQL query</b></li>
+          <li>${SPARK} Promoted <b>only if the query matches every row</b> — else it stays needs-review</li>
+          <li>${SPARK} Interactive (Genie Code) or headless (FM serving endpoint) — same gate</li>
+        </ul>
+        <div class="guard"><b>Guardrail:</b> the model widens coverage and writes the narrative; the <b>query is the gate</b>. A wrong hypothesis simply doesn't stick.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sechead">
+      <p class="eyebrow">Surface fit</p>
+      <h2>One engine, three entry points — matched to what each customer's workspace allows.</h2>
+      <p>The same code-aware engine backs all three surfaces, so the RCA notebook is identical wherever it runs.
+        Both approaches — deterministic and hybrid — are available on every surface.</p>
+    </div>
+    <table class="matrix">
+      <thead><tr><th>Entry point</th><th>Deterministic</th><th>Hybrid (det + agentic)</th><th>Best for</th></tr></thead>
+      <tbody>
+        <tr>
+          <th>Databricks App<span class="surf">web UI · no local setup</span></th>
+          <td class="yes">✓ default</td>
+          <td class="yes">✓ toggle → FM endpoint</td>
+          <td>Analysts &amp; leadership; <b>Genie-restricted</b> workspaces</td>
+        </tr>
+        <tr>
+          <th>CLI<span class="surf">python -m rca_engine.cli</span></th>
+          <td class="yes">✓ default</td>
+          <td class="yes">✓ <span class="mono">--endpoint</span></td>
+          <td>CI/CD &amp; automation; <b>Genie-restricted</b> workspaces</td>
+        </tr>
+        <tr>
+          <th>Genie Code skill<span class="surf">rca-recon · agent mode</span></th>
+          <td class="yes">✓ <span class="mono">llm_synthesis:false</span></td>
+          <td class="best">✓ best — interactive agent</td>
+          <td>Flexible workspaces wanting the live agentic experience</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="scenario">
+      <div class="s">
+        <p class="k">Scenario A</p>
+        <h3>Genie Code not enabled</h3>
+        <p>Some customer workspaces don't permit Genie Code. Full deterministic RCA — and headless agentic, where a
+          serving endpoint is allowed — still ships.</p>
+        <p class="pick">→ Databricks App or CLI</p>
+      </div>
+      <div class="s">
+        <p class="k">Scenario B</p>
+        <h3>Flexible / hybrid welcome</h3>
+        <p>Where the interactive agent is allowed, the Genie Code skill gives the richest experience; the App and CLI
+          remain available with a headless endpoint.</p>
+        <p class="pick">→ Genie Code skill (+ App / CLI)</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sechead">
+      <p class="eyebrow">Decision guide</p>
+      <h2>Which entry point? Start with one question — is Genie Code approved?</h2>
+      <p>Genie Code isn't enabled in every customer workspace. It never blocks ReconResolve: deterministic RCA
+        runs everywhere, and the agentic tier runs wherever a Foundation-Model serving endpoint is permitted.</p>
+    </div>
+    <div class="decision">
+      <div class="dpath no">
+        <div class="top"><span>⛔</span><div>Genie Code NOT approved<span class="q">restricted / regulated workspace</span></div></div>
+        <div class="body">
+          <div class="drow"><span class="mode">Deterministic</span><span class="rec"><span class="pill">App</span><span class="pill">CLI</span> ship as-is — no model, fully auditable.</span></div>
+          <div class="drow"><span class="mode">Hybrid</span><span class="rec"><span class="pill">App toggle</span><span class="pill">CLI&nbsp;--endpoint</span> when an FM serving endpoint is allowed; otherwise stay deterministic.</span></div>
+        </div>
+      </div>
+      <div class="dpath yes">
+        <div class="top"><span>✅</span><div>Genie Code approved<span class="q">flexible workspace</span></div></div>
+        <div class="body">
+          <div class="drow"><span class="mode">Deterministic</span><span class="rec">Any surface — <span class="pill">skill</span> (llm off), or <span class="pill">App</span> / <span class="pill">CLI</span>.</span></div>
+          <div class="drow"><span class="mode">Hybrid</span><span class="rec"><span class="pill">Genie&nbsp;Code&nbsp;skill</span> — best: the agent reasons live. App / CLI + endpoint also work.</span></div>
+        </div>
+      </div>
+      <p class="dnote">Same engine underneath, so the RCA notebook is identical on every path — the choice is workspace policy and experience, never capability.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sechead">
+      <p class="eyebrow">Proof · live demo</p>
+      <h2>Retail "Sales &amp; Revenue" mart — Snowflake → Databricks, 2M rows, genuine Lakebridge reconcile.</h2>
+      <p>Two beds share the same rich composed ETL. The <b>deterministic bed</b> resolves 13 findings at 98%, every
+        verdict query-confirmed. The <b>hybrid bed</b> adds three defects no rule can name — each precisely
+        root-caused by the agentic tier and <b>proven by a live reconstruction query</b>:</p>
+    </div>
+    <div class="wins">
+      <div class="win">
+        <span class="tag">Agentic · confirmed</span>
+        <span class="col">fact_sales.net_revenue</span>
+        <pre>ROUND(qty*price*(1+tax)
+   - qty*price*discount, 4)</pre>
+        <p class="cause"><b>Missing cross-term.</b> Discount &amp; tax applied additively — the <span class="mono">(1−d)(1+t)</span> cross-term <span class="mono">+d·t</span> is dropped, inflating revenue.</p>
+        <p class="conf">${CHECKC} query-confirmed · 95%</p>
+      </div>
+      <div class="win">
+        <span class="tag">Agentic · confirmed</span>
+        <span class="col">fact_sales.amount_usd</span>
+        <pre>ROUND(qty*price*fx.rate, 2)
+JOIN dim_fx
+  ON fx_date = trunc(dt,'MM')</pre>
+        <p class="cause"><b>FX join grain.</b> Joined at <b>month-start</b> instead of the daily rate — intra-month drift is lost.</p>
+        <p class="conf">${CHECKC} query-confirmed · 95%</p>
+      </div>
+      <div class="win">
+        <span class="tag">Agentic · confirmed</span>
+        <span class="col">fact_sales.status_bucket</span>
+        <pre>CASE status_code
+  WHEN 'A'..'C'..'P'
+  ELSE 'Unknown' END</pre>
+        <p class="cause"><b>Dropped CASE branch.</b> No arm for <span class="mono">'R'</span> (Returned) — those rows collapse to <span class="mono">'Unknown'</span>.</p>
+        <p class="conf">${CHECKC} query-confirmed · 95%</p>
+      </div>
+    </div>
+    <div class="callout">
+      <span>🔧</span>
+      <div>Every finding — deterministic <em>and</em> agentic — now carries the <b>transformation logic</b>, the
+        <b>⚠️ likely culprit</b>, and the <span class="mono">source script</span>. E.g. deterministic
+        <span class="mono">unit_price = CAST(ROUND(r.unit_price, 2) AS DECIMAL(18,2))</span> →
+        culprit <span class="mono">DECIMAL(18,2)</span>, scale reduced vs source <span class="mono">(in det_target.sql)</span>.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sechead">
+      <p class="eyebrow">Benchmarks · measured on ps-dr-east</p>
+      <h2>Correct, fast, and scale-bounded on genuine reconcile output.</h2>
+      <p>Ground truth = the known seeded defects. Timings from the <span class="mono">rca_genie_audit</span> table;
+        reconcile from the Lakebridge job runs.</p>
+    </div>
+    <div class="tiles">
+      <div class="tile hl"><div class="n">100<small>%</small></div><div class="l">Seeded defects detected &amp; correctly classified (13 det + 7 hybrid)</div></div>
+      <div class="tile"><div class="n">7<small>/7</small></div><div class="l">Hybrid findings query-confirmed (4 deterministic + 3 agentic)</div></div>
+      <div class="tile"><div class="n">~270<small>s</small></div><div class="l">Deterministic RCA over 3 tables, 2M rows, full enrichment</div></div>
+      <div class="tile"><div class="n">6<small>/6</small></div><div class="l">Concurrent RCA runs succeeded — ~500s wall (fleet)</div></div>
+    </div>
+    <div class="charts">
+      <div class="chart">
+        <h3>Stage latency</h3>
+        <p class="cap">2M-row retail bed · seconds (log-ish scale, labels exact)</p>
+        <svg viewBox="0 0 520 220" width="100%" height="auto" role="img" aria-label="Stage latency bar chart" font-family="var(--font-mono)">
+          <!-- baseline -->
+          <line x1="150" y1="14" x2="150" y2="196" stroke="var(--line)" stroke-width="1"/>
+          <!-- bars: width scaled, max ~944 -> 340px -->
+          <g font-size="12" fill="var(--muted)">
+            <text x="142" y="34" text-anchor="end">Reconcile (warm)</text>
+            <rect x="150" y="22" width="340" height="20" rx="4" fill="var(--steel)"/>
+            <text x="496" y="37" text-anchor="end" fill="#fff" font-weight="600">944s</text>
+
+            <text x="142" y="70" text-anchor="end">RCA · hybrid</text>
+            <rect x="150" y="58" width="141" height="20" rx="4" fill="var(--agent)"/>
+            <text x="297" y="73" fill="var(--ink)" font-weight="600">~390s</text>
+
+            <text x="142" y="106" text-anchor="end">RCA · deterministic</text>
+            <rect x="150" y="94" width="97" height="20" rx="4" fill="var(--det)"/>
+            <text x="253" y="109" fill="var(--ink)" font-weight="600">~270s</text>
+
+            <text x="142" y="142" text-anchor="end">RCA · deterministic*</text>
+            <rect x="150" y="130" width="30" height="20" rx="4" fill="var(--det)" opacity=".55"/>
+            <text x="186" y="145" fill="var(--ink)" font-weight="600">~24s</text>
+
+            <text x="142" y="178" text-anchor="end">Aggregate RCA</text>
+            <rect x="150" y="166" width="8" height="20" rx="4" fill="var(--good)"/>
+            <text x="164" y="181" fill="var(--ink)" font-weight="600">~18s</text>
+          </g>
+        </svg>
+        <p class="note">*lean pass (no live enrichment). RCA cost is driven by optional live checks + FM calls, each toggleable — not raw volume.</p>
+      </div>
+      <div class="chart">
+        <h3>Scales with volume — RCA stays flat</h3>
+        <p class="cap">Reconcile scales with data; RCA runs on the bounded recon sample</p>
+        <svg viewBox="0 0 520 220" width="100%" height="auto" role="img" aria-label="Scaling line chart" font-family="var(--font-mono)">
+          <!-- axes -->
+          <line x1="52" y1="180" x2="500" y2="180" stroke="var(--line)"/>
+          <line x1="52" y1="20" x2="52" y2="180" stroke="var(--line)"/>
+          <text x="150" y="205" fill="var(--muted)" font-size="11" text-anchor="middle">2M rows</text>
+          <text x="410" y="205" fill="var(--muted)" font-size="11" text-anchor="middle">20M rows</text>
+          <!-- reconcile line (318 -> 1014, scaled to 20..170 over range) -->
+          <polyline points="150,128 410,44" fill="none" stroke="var(--steel)" stroke-width="2.5"/>
+          <circle cx="150" cy="128" r="4" fill="var(--steel)"/><circle cx="410" cy="44" r="4" fill="var(--steel)"/>
+          <text x="150" y="120" fill="var(--steel)" font-size="11" text-anchor="middle">318s</text>
+          <text x="410" y="36" fill="var(--steel)" font-size="11" text-anchor="middle">1014s</text>
+          <!-- RCA line (24 -> 50, near flat low) -->
+          <polyline points="150,172 410,166" fill="none" stroke="var(--heat)" stroke-width="2.5"/>
+          <circle cx="150" cy="172" r="4" fill="var(--heat)"/><circle cx="410" cy="166" r="4" fill="var(--heat)"/>
+          <text x="150" y="165" fill="var(--heat)" font-size="11" text-anchor="middle">24s</text>
+          <text x="430" y="162" fill="var(--heat)" font-size="11" text-anchor="middle">50s</text>
+        </svg>
+        <div class="legend">
+          <span><span class="dot" style="background:var(--steel)"></span>Lakebridge reconcile</span>
+          <span><span class="dot" style="background:var(--heat)"></span>RCA (deterministic, lean)</span>
+        </div>
+        <p class="note">10× the data grows RCA ~2×, reconcile ~3.2× — every seeded defect still caught at 20M.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sechead">
+      <p class="eyebrow">Why it matters</p>
+      <h2>Technical rigor that converts directly into migration throughput.</h2>
+    </div>
+    <div class="impact">
+      <div class="col tech">
+        <h3>${GEAR} Technical impact</h3>
+        <ul>
+          <li><b>Query-gated, never hallucinated</b><span>Every verdict — deterministic or agentic — is proven by a re-runnable query. The model can't promote a guess.</span></li>
+          <li><b>Code-aware to the sub-expression</b><span>Parses the migrated SQL to name the exact culprit (a scale, an interval, a dropped CASE arm) and the source script.</span></li>
+          <li><b>One engine, three surfaces</b><span>App, CLI, and Genie skill share the engine — identical output, CI-parity, with deterministic & agentic on each.</span></li>
+          <li><b>Scale-bounded</b><span>Analysis runs on the recon sample + scope-bounded checks; proven at 20M rows, six concurrent runs.</span></li>
+        </ul>
+      </div>
+      <div class="col biz">
+        <h3>${BRIEF} Business impact</h3>
+        <ul>
+          <li><b>Days → minutes per migration</b><span>Reviewer-ready root cause for every difference, so engineers fix instead of investigate.</span></li>
+          <li><b>Fits every customer</b><span>Deterministic mode ships to Genie-restricted and regulated workspaces; agentic where allowed — no customer is blocked.</span></li>
+          <li><b>Auditable &amp; trusted</b><span>An append-only audit trail and a query behind every verdict make the result defensible to data owners.</span></li>
+          <li><b>Reusable asset</b><span>Dialect-agnostic knowledge bases and a repeatable harness turn one migration's effort into a program-wide capability.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="mono">ReconResolve · post-Lakebridge reconciliation RCA</span>
+    <span class="mono">Deterministic + agentic · App · CLI · Genie Code</span>
+  </div>
+</footer>
+
+<script>
+// Inline icon glyphs (kept out of markup for readability). Replace ${...} placeholders.
+(function(){
+  var check='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.5l3 3 6-7" stroke="var(--good)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var checkc='<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="vertical-align:-1px"><path d="M3.5 8.5l3 3 6-7" stroke="var(--good)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var spark='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.6 4.4 4.4 1.6-4.4 1.6L8 13.5 6.4 9.1 2 7.5l4.4-1.6z" fill="var(--agent)"/></svg>';
+  var gear='<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="var(--steel)" stroke-width="1.7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9L19 19M19 5l-2.1 2.1M7.1 16.9L5 19" stroke="var(--steel)" stroke-width="1.7" stroke-linecap="round"/></svg>';
+  var brief='<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="13" rx="2.2" stroke="var(--heat)" stroke-width="1.7"/><path d="M8.5 7V5.5A1.5 1.5 0 0110 4h4a1.5 1.5 0 011.5 1.5V7M3.5 12h17" stroke="var(--heat)" stroke-width="1.7" stroke-linecap="round"/></svg>';
+  var map={CHECK:check,CHECKC:checkc,SPARK:spark,GEAR:gear,BRIEF:brief};
+  document.body.innerHTML=document.body.innerHTML.replace(/\$\{(\w+)\}/g,function(m,k){return map[k]||m;});
+})();
+</script>
