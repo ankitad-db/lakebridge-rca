@@ -274,7 +274,8 @@ def load_result(settings: Settings, recon_id: str) -> Optional[RcaResult]:
 
         return analyze(_runner(settings), recon_id, settings.recon_catalog,
                        settings.recon_schema, dialect=settings.dialect, drilldown=True,
-                       mapping=_mapping(settings))
+                       mapping=_mapping(settings), use_lineage=settings.use_lineage,
+                       max_lineage_hops=settings.max_lineage_hops)
     return None
 
 
@@ -434,7 +435,8 @@ def run_analysis(settings: Settings, recon_id: str, only_table: str) -> RcaResul
 
         scoped = analyze(runner, recon_id, settings.recon_catalog, settings.recon_schema,
                          dialect=settings.dialect, drilldown=True, only_table=only_table,
-                         mapping=_mapping(settings))
+                         mapping=_mapping(settings), use_lineage=settings.use_lineage,
+                         max_lineage_hops=settings.max_lineage_hops)
         _maybe_llm_fallback(settings, scoped, runner)
         _merge_into_bundle(settings, recon_id, scoped)
         return scoped
@@ -671,7 +673,8 @@ def _analyze_publish(settings: Settings, recon_id: str, drilldown: bool,
     runner = _runner(settings)
     result = analyze(runner, recon_id, settings.recon_catalog,
                      settings.recon_schema, dialect=settings.dialect, drilldown=drilldown,
-                     mapping=_mapping(settings))
+                     mapping=_mapping(settings), use_lineage=settings.use_lineage,
+                     max_lineage_hops=settings.max_lineage_hops)
     _maybe_llm_fallback(settings, result, runner)
     try:
         write_rca_bundle(result, settings.bundles_dir, recon_id, combined=False)

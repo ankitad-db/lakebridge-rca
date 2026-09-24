@@ -369,17 +369,18 @@ caps = [
     ("Confidence scoring", "per-finding % + confirmed badge + run rollup", "App·CLI·Skill"),
     ("Aggregate RCA", "per-rule SUM / AVG / COUNT by group", "App·CLI·Skill"),
     ("Threshold & schema", "within-tolerance benign; type/precision diffs", "App·CLI·Skill"),
+    ("UC lineage trace-back + blast radius", "walks column/table lineage to the root; downstream consumers", "App·CLI·Skill"),
     ("Scale / prod-volume", "50M rows · 8.5 GB reconciled + RCA", "All"),
     ("Concurrency", "6 concurrent runs · ~500 s wall", "All"),
 ]
-y = 2.45
+y = 2.42
 for cap, works, ep in caps:
-    txt(s, ccols[0], y, cwid[0], 0.36, [(cap, {"size": 10.5, "bold": True, "font": HEAD, "color": INK})], spacing=0.98)
-    txt(s, ccols[1], y, cwid[1], 0.3, [("✅ Works", {"size": 10, "bold": True, "font": HEAD, "color": GREEN})])
-    txt(s, ccols[2], y, cwid[2], 0.36, [(works, {"size": 9, "font": BODY, "color": MUT})], spacing=0.98)
-    txt(s, ccols[3], y, cwid[3], 0.3, [(ep, {"size": 9, "font": MONO, "color": TEAL})])
-    rect(s, 0.6, y + 0.38, 8.8, 0.012, fill=PANEL)
-    y += 0.4
+    txt(s, ccols[0], y, cwid[0], 0.34, [(cap, {"size": 10, "bold": True, "font": HEAD, "color": INK})], spacing=0.95)
+    txt(s, ccols[1], y, cwid[1], 0.3, [("✅ Works", {"size": 9.5, "bold": True, "font": HEAD, "color": GREEN})])
+    txt(s, ccols[2], y, cwid[2], 0.34, [(works, {"size": 8.5, "font": BODY, "color": MUT})], spacing=0.95)
+    txt(s, ccols[3], y, cwid[3], 0.3, [(ep, {"size": 8.5, "font": MONO, "color": TEAL})])
+    rect(s, 0.6, y + 0.335, 8.8, 0.012, fill=PANEL)
+    y += 0.348
 
 # ============================ 8 — IMPACT ============================
 s = slide(WHITE)

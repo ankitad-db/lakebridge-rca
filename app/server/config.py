@@ -33,6 +33,9 @@ class Settings:
     transpiled_output_dir: str = ""
     recon_config_path: str = ""    # optional Lakebridge reconcile-config JSON (keys/mapping)
     source_scripts_dir: str = ""   # optional source-dialect DDL (declared source types)
+    # UC lineage: depth-agnostic upstream trace-back + downstream blast radius (system.access.*).
+    use_lineage: bool = True
+    max_lineage_hops: int = 10
     use_skill_job: bool = False    # invoke the Genie Code skill as a Databricks Job (vs in-process)
     skill_notebook: str = ""       # workspace path of the deployed skill's job_entry notebook
     skill_dir: str = ""            # workspace folder of the deployed skill (contains scripts/, config.yml)
@@ -94,6 +97,8 @@ def load_settings() -> Settings:
         transpiled_output_dir=os.environ.get("RCA_TRANSPILED_OUTPUT_DIR", ""),
         recon_config_path=os.environ.get("RCA_RECON_CONFIG_PATH", ""),
         source_scripts_dir=os.environ.get("RCA_SOURCE_SCRIPTS_DIR", ""),
+        use_lineage=os.environ.get("RCA_USE_LINEAGE", "true").lower() in ("1", "true", "yes"),
+        max_lineage_hops=int(os.environ.get("RCA_MAX_LINEAGE_HOPS", "10") or 10),
         use_skill_job=os.environ.get("RCA_USE_SKILL_JOB", "").lower() in ("1", "true", "yes"),
         skill_notebook=os.environ.get("RCA_SKILL_NOTEBOOK", ""),
         skill_dir=os.environ.get("RCA_SKILL_DIR", ""),
