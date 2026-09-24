@@ -32,6 +32,20 @@ export function setActiveDialect(d: string): void {
   else localStorage.removeItem(DIALECT_KEY);
 }
 
+// ---- RCA mode: deterministic (Tier-1 only) vs agentic (adds Tier-2 FM fallback) ---- //
+const MODE_KEY = "rca.activeMode";
+let activeMode: string = localStorage.getItem(MODE_KEY) === "agentic" ? "agentic" : "deterministic";
+export function getActiveMode(): string {
+  return activeMode;
+}
+export function setActiveMode(m: string): void {
+  activeMode = m === "agentic" ? "agentic" : "deterministic";
+  localStorage.setItem(MODE_KEY, activeMode);
+}
+function isAgentic(): boolean {
+  return activeMode === "agentic";
+}
+
 function withScope(path: string): string {
   const params: string[] = [];
   if (activeCatalog) params.push(`catalog=${encodeURIComponent(activeCatalog)}`);
@@ -72,9 +86,11 @@ export const api = {
   tables: (id: string) =>
     get<{ tables: TableRef[] }>(`/api/runs/${encodeURIComponent(id)}/tables`).then((r) => r.tables),
   analyze: (id: string, table: string) =>
-    post<TableAnalysis>(`/api/runs/${encodeURIComponent(id)}/analyze`, { table }),
+    post<TableAnalysis>(`/api/runs/${encodeURIComponent(id)}/analyze`, { table, agentic: isAgentic() }),
   analyzeAll: (id: string, drilldown = true, notebook_dir?: string) =>
-    post<JobStatus>(`/api/runs/${encodeURIComponent(id)}/analyze-all`, { drilldown, notebook_dir }),
+    post<JobStatus>(`/api/runs/${encodeURIComponent(id)}/analyze-all`, {
+      drilldown, notebook_dir, agentic: isAgentic(),
+    }),
   job: (id: string) => get<JobStatus>(`/api/runs/${encodeURIComponent(id)}/job`),
   summaryUrl: (id: string) => withScope(`/api/runs/${encodeURIComponent(id)}/summary`),
   schemas: () => get<{ schemas: string[] }>("/api/schemas").then((r) => r.schemas),

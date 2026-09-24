@@ -5,8 +5,10 @@ import {
   api,
   getActiveCatalog,
   getActiveDialect,
+  getActiveMode,
   setActiveCatalog,
   setActiveDialect,
+  setActiveMode,
 } from "../api";
 
 export function Layout({ config, children }: { config: AppConfig | null; children: ReactNode }) {
@@ -16,6 +18,12 @@ export function Layout({ config, children }: { config: AppConfig | null; childre
   const [catalog, setCatalog] = useState<string>(getActiveCatalog());
   const [dialects, setDialects] = useState<string[]>([]);
   const [dialect, setDialect] = useState<string>(getActiveDialect());
+  const [mode, setMode] = useState<string>(getActiveMode());
+
+  function changeMode(m: string) {
+    setActiveMode(m);
+    setMode(m);
+  }
 
   useEffect(() => {
     // Seed the active catalog/dialect from config the first time (if not chosen yet).
@@ -77,6 +85,14 @@ export function Layout({ config, children }: { config: AppConfig | null; childre
             {dialectOptions.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
+          </select>
+        </label>
+
+        <label className="catalog-pick">
+          <span className="lbl">RCA MODE</span>
+          <select value={mode} onChange={(e) => changeMode(e.target.value)}>
+            <option value="deterministic">Deterministic (Tier-1, no LLM)</option>
+            <option value="agentic">Agentic (adds Tier-2 FM)</option>
           </select>
         </label>
 

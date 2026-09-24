@@ -17,6 +17,11 @@ env:
   - name: RCA_DIALECT
     value: "snowflake"
 
+  # Code-aware RCA: migrated (transpiled) SQL artifact so App findings carry the
+  # 🔧 Transformation logic + culprit. Default points at the hybrid retail demo bed.
+  - name: RCA_TRANSPILED_OUTPUT_DIR
+    value: "/Workspace/Users/ankita.darekar@databricks.com/.assistant/skills/rca-recon/demo_artifacts/hybrid"
+
   # Default source/target schemas prefilled in the "Trigger recon" form. The app
   # writes new recon runs into RCA_RECON_CATALOG.RCA_RECON_SCHEMA, so the SP needs
   # SELECT on these schemas and MODIFY on the reconcile schema.
