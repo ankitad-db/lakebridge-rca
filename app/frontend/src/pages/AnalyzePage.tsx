@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { NotebookRef, TableAnalysis, TableRef } from "../types";
 import { FindingCard } from "../components/FindingCard";
+import { ModeToggle } from "../components/ModeToggle";
 
 const VERDICT_CLASS: Record<string, string> = {
   migration_induced: "v-migration",
@@ -111,6 +112,8 @@ export function AnalyzePage() {
           ▶ Run full RCA & generate notebook
         </button>
       </div>
+
+      <ModeToggle />
 
       {!tables ? (
         <div className="center-msg"><div className="spinner" /></div>

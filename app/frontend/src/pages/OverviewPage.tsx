@@ -4,6 +4,7 @@ import { api } from "../api";
 import type { JobStatus, RunView } from "../types";
 import { MatchBar, SeverityBadge, VerdictBadge } from "../components/Badges";
 import { VerdictDonut } from "../components/Charts";
+import { ModeToggle } from "../components/ModeToggle";
 
 export function OverviewPage() {
   const { reconId = "" } = useParams();
@@ -87,6 +88,7 @@ export function OverviewPage() {
           border: "1px solid var(--border-2)", background: "var(--panel-2)", color: "var(--text)",
         }}
       />
+      <ModeToggle compact />
       <button className="btn primary" onClick={runFull} disabled={running}>
         {running ? "Running full RCA…" : "▶ Run full RCA & generate notebook"}
       </button>
