@@ -1,356 +1,342 @@
-"""Build the ReconResolve leadership deck as a .pptx (16:9), import-ready for Google Slides.
+"""ReconResolve leadership deck (.pptx) — styled to match the Field-Eng "RCA Notebook &
+skill" template (10x5.63, Barlow + DM Sans, red/ink/teal palette). Import into Google Slides.
 
-Same content + palette as docs/reconresolve_leadership_deck.html. Run:
-    python3 docs/build_deck.py   ->  docs/ReconResolve_Leadership.pptx
+Run:  python3 docs/build_deck.py  ->  docs/ReconResolve_Leadership.pptx
 """
 from pptx import Presentation
-from pptx.util import Inches as In, Pt, Emu
+from pptx.util import Inches as In, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 import os
 
-# ---- palette ----
-PAPER = RGBColor(0xF4, 0xF3, 0xEF)
-WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-INK   = RGBColor(0x1B, 0x1E, 0x24)
-MUTED = RGBColor(0x5C, 0x64, 0x72)
-LINE  = RGBColor(0xE4, 0xE1, 0xD9)
-STEEL = RGBColor(0x2B, 0x5B, 0x8A)
-STEELS= RGBColor(0xE7, 0xEE, 0xF5)
-HEAT  = RGBColor(0xC5, 0x6A, 0x2E)
-HEATS = RGBColor(0xF6, 0xE9, 0xDD)
-GOOD  = RGBColor(0x2E, 0x7D, 0x5B)
-AGENT = RGBColor(0x7E, 0x4C, 0xA8)
-AGENTS= RGBColor(0xEF, 0xE7, 0xF6)
-SURF2 = RGBColor(0xEF, 0xED, 0xE6)
+# ---- template palette ----
+RED  = RGBColor(0xFF, 0x36, 0x20)
+INK  = RGBColor(0x1B, 0x30, 0x37)
+TEAL = RGBColor(0x1B, 0x51, 0x61)
+MUT  = RGBColor(0x61, 0x87, 0x93)
+LMUT = RGBColor(0x9E, 0xB7, 0xBE)
+DARK = RGBColor(0x1B, 0x30, 0x37)
+DARK2= RGBColor(0x24, 0x42, 0x4B)
+PANEL= RGBColor(0xF1, 0xF1, 0xF1)
+PANEL2=RGBColor(0xF3, 0xF6, 0xF7)
+GREEN= RGBColor(0x00, 0xB3, 0x78)
+GOLD = RGBColor(0xFF, 0xAB, 0x00)
+PURP = RGBColor(0x7E, 0x4C, 0xA8)
+WHITE= RGBColor(0xFF, 0xFF, 0xFF)
 
-DISP = "Archivo"
-BODY = "IBM Plex Sans"
-MONO = "IBM Plex Mono"
+HEAD = "Barlow"
+BODY = "DM Sans"
 
 prs = Presentation()
-prs.slide_width = In(13.333)
-prs.slide_height = In(7.5)
+prs.slide_width = In(10); prs.slide_height = In(5.625)
 BLANK = prs.slide_layouts[6]
-SW, SH = 13.333, 7.5
+SW = 10.0
 
 
 def slide(bg=WHITE):
     s = prs.slides.add_slide(BLANK)
-    r = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, In(0), In(0), In(SW), In(SH))
-    r.fill.solid(); r.fill.fore_color.rgb = bg; r.line.fill.background()
-    r.shadow.inherit = False
+    r = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, In(0), In(0), In(SW), In(5.625))
+    r.fill.solid(); r.fill.fore_color.rgb = bg; r.line.fill.background(); r.shadow.inherit = False
     return s
 
 
-def box(s, l, t, w, h, fill=None, line=None, line_w=1.0, shape=MSO_SHAPE.RECTANGLE, radius=None):
+def rect(s, l, t, w, h, fill=None, line=None, lw=1.0, shape=MSO_SHAPE.RECTANGLE, radius=0.08):
     sp = s.shapes.add_shape(shape, In(l), In(t), In(w), In(h))
-    if fill is None:
-        sp.fill.background()
-    else:
-        sp.fill.solid(); sp.fill.fore_color.rgb = fill
-    if line is None:
-        sp.line.fill.background()
-    else:
-        sp.line.color.rgb = line; sp.line.width = Pt(line_w)
+    if fill is None: sp.fill.background()
+    else: sp.fill.solid(); sp.fill.fore_color.rgb = fill
+    if line is None: sp.line.fill.background()
+    else: sp.line.color.rgb = line; sp.line.width = Pt(lw)
     sp.shadow.inherit = False
-    if radius is not None and shape == MSO_SHAPE.ROUNDED_RECTANGLE:
-        try:
-            sp.adjustments[0] = radius
-        except Exception:
-            pass
+    if shape == MSO_SHAPE.ROUNDED_RECTANGLE:
+        try: sp.adjustments[0] = radius
+        except Exception: pass
     return sp
 
 
-def text(s, l, t, w, h, runs, size=14, color=INK, bold=False, font=BODY, align=PP_ALIGN.LEFT,
-         anchor=MSO_ANCHOR.TOP, spacing=1.0, space_after=4):
+def txt(s, l, t, w, h, runs, size=12, color=INK, bold=False, font=BODY, align=PP_ALIGN.LEFT,
+        anchor=MSO_ANCHOR.TOP, spacing=1.0, sa=3):
     tb = s.shapes.add_textbox(In(l), In(t), In(w), In(h)); tf = tb.text_frame
     tf.word_wrap = True; tf.vertical_anchor = anchor
-    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
-    if isinstance(runs, str):
-        runs = [(runs, {})]
+    tf.margin_left = tf.margin_right = 0; tf.margin_top = tf.margin_bottom = 0
+    if isinstance(runs, str): runs = [(runs, {})]
+    p = tf.paragraphs[0]; p.alignment = align; p.line_spacing = spacing; p.space_after = Pt(sa)
     first = True
-    # a "run list" is a list of (text, opts) that all go on ONE paragraph unless opts has 'nl'
-    p = tf.paragraphs[0]; p.alignment = align; p.line_spacing = spacing; p.space_after = Pt(space_after)
-    for txt, o in runs:
+    for text, o in runs:
         if o.get("nl") and not first:
             p = tf.add_paragraph(); p.alignment = o.get("align", align)
-            p.line_spacing = o.get("spacing", spacing); p.space_after = Pt(o.get("space_after", space_after))
-        r = p.add_run(); r.text = txt
+            p.line_spacing = o.get("spacing", spacing); p.space_after = Pt(o.get("sa", sa))
+        r = p.add_run(); r.text = text
         r.font.size = Pt(o.get("size", size)); r.font.bold = o.get("bold", bold)
         r.font.name = o.get("font", font); r.font.color.rgb = o.get("color", color)
         first = False
     return tb
 
 
-def para(text_list):
-    """Convenience: list of (txt, opts) where each starts a new line."""
-    out = []
-    for i, item in enumerate(text_list):
-        t, o = (item if isinstance(item, tuple) else (item, {}))
-        o = dict(o); o["nl"] = True
-        out.append((t, o))
-    return out
+def lines(items):
+    return [(t, {**o, "nl": True}) for (t, o) in (i if isinstance(i, tuple) else (i, {}) for i in items)]
 
 
-def eyebrow(s, txt, x=0.9, y=0.62, color=HEAT):
-    text(s, x, y, 11, 0.3, [(txt.upper(), {"size": 12, "bold": True, "font": MONO, "color": color})])
+def chrome(s, eye, title, sub=None, title_size=26):
+    rect(s, 0.6, 0.52, 0.55, 0.09, fill=RED)
+    txt(s, 0.6, 0.64, 8.8, 0.3, [(eye.upper(), {"size": 12, "bold": True, "font": HEAD, "color": MUT})])
+    txt(s, 0.6, 0.98, 8.9, 0.7, [(title, {"size": title_size, "bold": True, "font": HEAD, "color": INK})], spacing=1.0)
+    if sub:
+        txt(s, 0.6, 1.66, 8.9, 0.5, [(sub, {"size": 12.5, "font": BODY, "color": TEAL})], spacing=1.05)
 
 
-def title(s, txt, x=0.9, y=0.95, w=11.5, size=30, color=INK):
-    text(s, x, y, w, 1.4, [(txt, {"size": size, "bold": True, "font": DISP, "color": color})], spacing=1.0)
+def marker_head(s, l, t, w, text, mc=RED, tc=INK, size=13):
+    rect(s, l, t + 0.05, 0.15, 0.15, fill=mc)
+    txt(s, l + 0.28, t, w, 0.32, [(text, {"size": size, "bold": True, "font": HEAD, "color": tc})])
 
 
-def accent_bar(s, color=HEAT):
-    box(s, 0, 0, SW, 0.14, fill=color)
+CHK = "✓  "
 
-
-# ============================ SLIDE 1 — TITLE ============================
-s = slide(PAPER)
-box(s, 0, 0, SW, 0.16, fill=HEAT)
-text(s, 0.9, 1.5, 11.5, 0.4, [("RECONRESOLVE", {"size": 15, "bold": True, "font": DISP, "color": HEAT})])
-text(s, 0.9, 1.95, 11.5, 0.35, [("Post-Lakebridge reconciliation · root-cause analysis",
-     {"size": 13, "font": MONO, "color": MUTED})])
-text(s, 0.9, 2.7, 11.5, 2.2, [
-    ("Reconcile tells you ", {"size": 40, "bold": True, "font": DISP, "color": INK}),
-    ("what", {"size": 40, "bold": True, "font": DISP, "color": HEAT}),
-    (" differs.", {"size": 40, "bold": True, "font": DISP, "color": INK}),
-], spacing=1.05)
-text(s, 0.9, 3.6, 11.5, 1.2, [
-    ("ReconResolve tells you ", {"size": 40, "bold": True, "font": DISP, "color": INK}),
-    ("why", {"size": 40, "bold": True, "font": DISP, "color": HEAT}),
-    (" — and proves it.", {"size": 40, "bold": True, "font": DISP, "color": INK}),
-], spacing=1.05)
-text(s, 0.9, 4.95, 10.8, 1.1, [(
-    "Reads the migrated SQL, pinpoints the exact transform and the part that broke, and confirms every "
-    "verdict with a live query — deterministic by default, with an agentic layer for the hard long tail.",
-    {"size": 15, "color": MUTED})], spacing=1.2)
-# pipeline chips
+# ============================ 1 — TITLE ============================
+s = slide(WHITE)
+rect(s, 0.6, 1.5, 0.55, 0.09, fill=RED)
+txt(s, 0.6, 1.72, 8.8, 1.0, [("ReconResolve", {"size": 40, "bold": True, "font": HEAD, "color": INK})])
+txt(s, 0.6, 2.62, 8.8, 0.45, [("The 4th stage after Lakebridge: reconcile tells you ",
+     {"size": 15, "font": BODY, "color": MUT}),
+    ("what", {"size": 15, "font": BODY, "color": RED, "bold": True}),
+    (" differs — ReconResolve tells you ", {"size": 15, "font": BODY, "color": MUT}),
+    ("why", {"size": 15, "font": BODY, "color": RED, "bold": True}),
+    (".", {"size": 15, "font": BODY, "color": MUT})], spacing=1.15)
+txt(s, 0.6, 3.15, 8.8, 0.4, [("Deterministic + agentic root-cause analysis · App · CLI · Genie Code",
+     {"size": 12.5, "font": BODY, "color": TEAL})])
 steps = [("analyze", False), ("transpile", False), ("reconcile", False), ("RCA · ReconResolve", True)]
-x = 0.9
+x = 0.6
 for lbl, on in steps:
-    w = 0.35 + 0.13 * len(lbl)
-    b = box(s, x, 6.2, w, 0.5, fill=(HEATS if on else WHITE), line=(HEAT if on else LINE),
-            shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.5)
-    text(s, x, 6.2, w, 0.5, [(lbl, {"size": 12, "font": MONO, "bold": on,
-         "color": (INK if on else MUTED)})], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-    x += w + 0.28
-    if x < 8.5 and lbl != "RCA · ReconResolve":
-        text(s, x - 0.24, 6.2, 0.22, 0.5, [("→", {"size": 13, "color": LINE})],
-             align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    w = 0.32 + 0.115 * len(lbl)
+    rect(s, x, 4.15, w, 0.42, fill=(RED if on else PANEL), shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.5)
+    txt(s, x, 4.15, w, 0.42, [(lbl, {"size": 11, "bold": on, "font": HEAD, "color": (WHITE if on else MUT)})],
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    x += w
+    if lbl != "RCA · ReconResolve":
+        txt(s, x, 4.15, 0.4, 0.42, [("→", {"size": 13, "color": LMUT})], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+        x += 0.4
+rect(s, 0.6, 4.95, 2.0, 0.36, fill=DARK, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+txt(s, 0.6, 4.95, 2.0, 0.36, [("Field Engineering", {"size": 10, "bold": True, "font": HEAD, "color": LMUT})],
+    align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
+# ============================ 2 — THE GAP ============================
+s = slide(WHITE)
+chrome(s, "The problem", "Between “the numbers don’t match” and a fix — a week of manual work", title_size=24)
+gap = [("TODAY · LAKEBRIDGE RECONCILE", "A list of differences", RED,
+        ["Reports WHICH columns / rows differ — e.g. unit_price differs on 1,844,309 of 2,000,000 rows",
+         "Stops at the symptom: no mechanism, no source, no proof",
+         "Engineer opens the ETL, hypothesizes, writes queries — days per table"], PANEL, INK, MUT),
+       ("WITH RECONRESOLVE", "The mechanism, the culprit, the proof", GREEN,
+        ["Category + exact migrated derivation + ⚠️ likely-culprit sub-expression",
+         "The source script + a runnable confirming query + a suggested fix",
+         "Reviewer-ready notebook in minutes — deterministic or agentic"], DARK, WHITE, LMUT)]
+for i, (k, h, c, items, bg, tc, sc) in enumerate(gap):
+    x = 0.6 + i * 4.55
+    rect(s, x, 2.35, 4.25, 2.9, fill=bg, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.05)
+    rect(s, x, 2.35, 0.08, 2.9, fill=c)
+    txt(s, x + 0.32, 2.55, 3.8, 0.28, [(k, {"size": 9.5, "bold": True, "font": HEAD, "color": c})])
+    txt(s, x + 0.32, 2.82, 3.8, 0.5, [(h, {"size": 16, "bold": True, "font": HEAD, "color": tc})], spacing=1.0)
+    txt(s, x + 0.32, 3.5, 3.85, 1.6, lines([(CHK + it if bg == DARK else "•  " + it,
+        {"size": 10.5, "color": sc, "sa": 6}) for it in items]), spacing=1.05)
 
-# ============================ SLIDE 2 — THE GAP ============================
-s = slide(WHITE); accent_bar(s)
-eyebrow(s, "The gap")
-title(s, "Between “the numbers don’t match” and a fix, there’s a week of manual work.", size=26, w=11.5)
-cards = [
-    ("TODAY · LAKEBRIDGE RECONCILE", "A list of differences", WARN if False else HEAT,
-     "Reconcile reports which columns and rows differ — e.g. unit_price differs on 1,844,309 of "
-     "2,000,000 rows. Correct and essential, but it stops at the symptom. An engineer still has to open "
-     "the ETL, read the transform, hypothesize, and write queries to prove it — days per table."),
-    ("WITH RECONRESOLVE", "The mechanism, the culprit, the proof", GOOD,
-     "For every difference: the category, the exact migrated derivation, the ⚠️ likely-culprit "
-     "sub-expression, the source script, a runnable confirming query, and a suggested fix — as a "
-     "reviewer-ready notebook, in minutes."),
+# ============================ 3 — TWO TIERS ============================
+s = slide(WHITE)
+chrome(s, "How it works", "Two tiers — every verdict backed by a query, never a bare model guess", title_size=23)
+tiers = [("TIER 1 · DETERMINISTIC", TEAL, PANEL, INK, TEAL, "Rule-based · query-confirmed · the default",
+          ["Per-dialect probes classify the mechanism",
+           "Parses migrated SQL → transformation logic + culprit",
+           "One confirming query per finding sets the verdict",
+           "Threshold-aware · schema & aggregate RCA · fixes"],
+          "Runs anywhere — no Genie, no model, no external calls."),
+         ("TIER 2 · AGENTIC", PURP, DARK, WHITE, GOLD, "Foundation-model · query-gated · optional",
+          ["Reconstructs the derivation from source columns",
+           "Proposes the precise cause AND a confirming query",
+           "Promoted only if the query matches every row",
+           "Interactive (Genie) or headless (FM endpoint)"],
+          "Guardrail: the query is the gate — a wrong guess doesn’t stick.")]
+for i, (badge, c, bg, tc, hc, sub, items, guard) in enumerate(tiers):
+    x = 0.6 + i * 4.55
+    rect(s, x, 2.3, 4.25, 3.0, fill=bg, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.04)
+    rect(s, x + 0.3, 2.55, 2.15, 0.34, fill=(WHITE if bg == DARK else WHITE), shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.5)
+    txt(s, x + 0.3, 2.55, 2.15, 0.34, [(badge, {"size": 9, "bold": True, "font": HEAD, "color": c})],
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    txt(s, x + 0.3, 3.0, 3.7, 0.3, [(sub, {"size": 10, "font": BODY, "color": (LMUT if bg == DARK else MUT)})])
+    txt(s, x + 0.3, 3.38, 3.75, 1.5, lines([(CHK + it, {"size": 10.5, "color": tc, "sa": 5}) for it in items]), spacing=1.03)
+    txt(s, x + 0.3, 4.92, 3.75, 0.32, [(guard, {"size": 9.5, "font": BODY, "color": hc, "bold": True})], spacing=1.0)
+
+# ============================ 3b — FLOW DIAGRAM ============================
+def fbox(s, l, t, w, h, title, subt, fill, tc, sc, line=None):
+    rect(s, l, t, w, h, fill=fill, line=line, lw=1.3, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.12)
+    txt(s, l + 0.08, t + 0.13, w - 0.16, 0.34, [(title, {"size": 10.5, "bold": True, "font": HEAD, "color": tc})],
+        align=PP_ALIGN.CENTER)
+    if subt:
+        txt(s, l + 0.08, t + 0.46, w - 0.16, h - 0.5, [(subt, {"size": 7.8, "font": BODY, "color": sc})],
+            align=PP_ALIGN.CENTER, spacing=1.0)
+
+def arrow(s, l, t, w, h, shape, color=MUT):
+    rect(s, l, t, w, h, fill=color, shape=shape)
+
+s = slide(WHITE)
+chrome(s, "Pipeline", "How a recon_id becomes a proven root cause", title_size=23,
+       sub="Deterministic path across the top; the agentic tier is an optional fallback for the residual — both end in the same query-backed notebook.")
+xs = [0.6, 2.42, 4.24, 6.06, 7.88]; BW = 1.5; BY = 2.55; BH = 0.95
+boxes = [
+    ("recon_id", "from Lakebridge\nreconcile", PANEL, INK, MUT, TEAL),
+    ("Ingest + classify", "typed probes ·\nper-dialect KB", PANEL, INK, MUT, None),
+    ("Code-correlation", "parse migrated SQL →\n🔧 transform + ⚠️ culprit", PANEL, INK, MUT, None),
+    ("Confirm", "one live query\nper finding", PANEL, INK, MUT, None),
+    ("RCA Notebook", "verdict · culprit ·\nfix · owner", DARK, WHITE, LMUT, None),
 ]
-for i, (k, h, c, body) in enumerate(cards):
-    x = 0.9 + i * 5.95
-    box(s, x, 2.5, 5.55, 3.4, fill=WHITE, line=LINE, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.04)
-    box(s, x, 2.5, 0.09, 3.4, fill=c)
-    text(s, x + 0.35, 2.8, 5.0, 0.3, [(k, {"size": 11, "bold": True, "font": MONO, "color": MUTED})])
-    text(s, x + 0.35, 3.2, 5.0, 0.6, [(h, {"size": 20, "bold": True, "font": DISP, "color": INK})])
-    text(s, x + 0.35, 3.95, 4.95, 1.9, [(body, {"size": 13, "color": MUTED})], spacing=1.2)
+for (title, subt, fill, tc, sc, ln), x in zip(boxes, xs):
+    st = subt.replace("\n", " ")
+    fbox(s, x, BY, BW, BH, title, st, fill, tc, sc, line=ln)
+for x in xs[:-1]:
+    arrow(s, x + BW + 0.01, BY + BH / 2 - 0.13, 0.30, 0.26, MSO_SHAPE.RIGHT_ARROW, color=LMUT)
+# agentic branch below Confirm → RCA Notebook
+arrow(s, xs[3] + BW / 2 - 0.13, BY + BH + 0.02, 0.26, 0.34, MSO_SHAPE.DOWN_ARROW, color=PURP)
+txt(s, xs[3] + BW / 2 + 0.16, BY + BH + 0.04, 1.2, 0.3, [("residual", {"size": 8, "font": BODY, "color": PURP, "bold": True})])
+fbox(s, xs[2] + 0.2, 4.05, 3.4, 1.0, "Tier-2 · Agentic fallback (optional)",
+     "FM reconstructs the derivation from source columns + proposes a confirming query — promoted ONLY if it matches",
+     DARK2, WHITE, LMUT)
+arrow(s, xs[4] + BW / 2 - 0.13, 4.05 - 0.36, 0.26, 0.34, MSO_SHAPE.UP_ARROW, color=GREEN)
+txt(s, xs[4] + BW / 2 + 0.16, 4.05 - 0.34, 1.5, 0.3, [("promoted ✓", {"size": 8, "font": BODY, "color": GREEN, "bold": True})])
+# footnote legend
+rect(s, 0.6, 5.18, 0.16, 0.16, fill=PANEL); txt(s, 0.82, 5.14, 4.5, 0.25, [("Deterministic — rule + query, no LLM",
+     {"size": 8.5, "font": BODY, "color": MUT})])
+rect(s, 5.2, 5.18, 0.16, 0.16, fill=DARK2); txt(s, 5.42, 5.14, 4.2, 0.25, [("Agentic — query-gated FM, optional",
+     {"size": 8.5, "font": BODY, "color": MUT})])
 
-WARN = RGBColor(0xB9, 0x82, 0x2A)
+# ============================ 4 — SURFACE MATRIX ============================
+s = slide(WHITE)
+chrome(s, "Surface fit", "One engine, three entry points — matched to workspace policy", title_size=23,
+       sub="The same code-aware engine backs all three surfaces — the RCA notebook is identical wherever it runs.")
+cols = [0.6, 3.7, 5.55, 7.35]; wid = [3.0, 1.8, 1.75, 2.05]
+for cx, w, h in zip(cols, wid, ["ENTRY POINT", "DETERMINISTIC", "HYBRID", "BEST FOR"]):
+    txt(s, cx, 2.35, w, 0.3, [(h, {"size": 9.5, "bold": True, "font": HEAD, "color": MUT})])
+rect(s, 0.6, 2.66, 8.8, 0.02, fill=LMUT)
+rows = [("Databricks App", "web UI · no local setup", "✓ default", GREEN, "✓ endpoint", GREEN, "Analysts; Genie-restricted"),
+        ("CLI", "python -m rca_engine.cli", "✓ default", GREEN, "✓ --endpoint", GREEN, "CI/CD; Genie-restricted"),
+        ("Genie Code skill", "rca-recon · agent mode", "✓ llm off", GREEN, "✓ BEST", RED, "Flexible · live agentic")]
+y = 2.78
+for name, sub, det, dc, hyb, hc, best in rows:
+    txt(s, cols[0], y, wid[0], 0.32, [(name, {"size": 13, "bold": True, "font": HEAD, "color": INK})])
+    txt(s, cols[0], y + 0.3, wid[0], 0.25, [(sub, {"size": 9, "font": BODY, "color": MUT})])
+    txt(s, cols[1], y + 0.04, wid[1], 0.3, [(det, {"size": 11.5, "bold": True, "font": HEAD, "color": dc})])
+    txt(s, cols[2], y + 0.04, wid[2], 0.3, [(hyb, {"size": 11.5, "bold": True, "font": HEAD, "color": hc})])
+    txt(s, cols[3], y + 0.02, wid[3], 0.6, [(best, {"size": 10.5, "font": BODY, "color": TEAL})], spacing=1.02)
+    rect(s, 0.6, y + 0.66, 8.8, 0.015, fill=PANEL)
+    y += 0.82
 
+# ============================ 5 — DECISION ============================
+s = slide(WHITE)
+chrome(s, "Decision guide", "Which entry point? Start with one question — is Genie Code approved?", title_size=22,
+       sub="Genie Code isn’t enabled everywhere. It never blocks ReconResolve — deterministic runs anywhere; agentic runs where an FM endpoint is allowed.")
+paths = [("⛔  Genie Code NOT approved", "restricted / regulated workspace", RED, PANEL, INK,
+          [("Deterministic", "App · CLI — ship as-is, no model, fully auditable"),
+           ("Hybrid", "App toggle · CLI --endpoint when an FM endpoint is allowed; else stay deterministic")]),
+         ("✅  Genie Code approved", "flexible workspace", GREEN, DARK, WHITE,
+          [("Deterministic", "Any surface — skill (llm off), App or CLI"),
+           ("Hybrid", "Genie Code skill — best (agent reasons live); App / CLI + endpoint also work")])]
+for i, (top, q, c, bg, tc, rws) in enumerate(paths):
+    x = 0.6 + i * 4.55
+    rect(s, x, 2.5, 4.25, 2.35, fill=bg, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.04)
+    rect(s, x, 2.5, 4.25, 0.06, fill=c)
+    txt(s, x + 0.3, 2.68, 3.8, 0.35, [(top, {"size": 14, "bold": True, "font": HEAD, "color": tc})])
+    txt(s, x + 0.3, 3.04, 3.8, 0.25, [(q.upper(), {"size": 8.5, "font": HEAD, "color": (LMUT if bg == DARK else MUT)})])
+    yy = 3.45
+    for mode, rec in rws:
+        txt(s, x + 0.3, yy, 1.15, 0.6, [(mode.upper(), {"size": 9, "bold": True, "font": HEAD, "color": c})])
+        txt(s, x + 1.45, yy, 2.65, 0.7, [(rec, {"size": 9.5, "font": BODY, "color": tc})], spacing=1.05)
+        yy += 0.72
+txt(s, 0.6, 5.05, 8.8, 0.4, [("Same engine underneath — the notebook is identical on every path. The choice is workspace "
+    "policy and experience, never capability.", {"size": 10, "font": BODY, "color": MUT})], spacing=1.0)
 
-# ============================ SLIDE 3 — TWO TIERS ============================
-s = slide(WHITE); accent_bar(s, STEEL)
-eyebrow(s, "How it works", color=STEEL)
-title(s, "Two tiers. Every verdict is backed by a query — never a bare model guess.", size=25, w=11.5)
-tiers = [
-    ("TIER 1 · DETERMINISTIC", STEEL, STEELS, "Rule-based, query-confirmed",
-     "No LLM. Reproducible and auditable — the default.",
-     ["Per-dialect probes classify the mechanism",
-      "Parses migrated SQL → transformation logic + culprit sub-expression",
-      "One confirming query per finding; verdict + confidence from the result",
-      "Threshold-aware, schema & aggregate RCA, suggested fixes"],
-     "Runs anywhere — no Genie, no model, no external calls."),
-    ("TIER 2 · AGENTIC", AGENT, AGENTS, "Foundation-model, query-gated",
-     "Only the residual the rules can’t name. Optional.",
-     ["Reconstructs the migrated derivation from source columns",
-      "Proposes the precise cause AND a confirming SQL query",
-      "Promoted only if the query matches every row — else needs-review",
-      "Interactive (Genie Code) or headless (FM endpoint) — same gate"],
-     "Guardrail: the query is the gate. A wrong hypothesis doesn’t stick."),
-]
-for i, (badge, c, cs, h, sub, items, guard) in enumerate(tiers):
-    x = 0.9 + i * 5.95
-    box(s, x, 2.4, 5.55, 4.4, fill=WHITE, line=LINE, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.03)
-    bb = box(s, x + 0.35, 2.7, 2.6, 0.42, fill=cs, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.5)
-    text(s, x + 0.35, 2.7, 2.6, 0.42, [(badge, {"size": 10.5, "bold": True, "font": MONO, "color": c})],
-         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-    text(s, x + 0.35, 3.25, 5.0, 0.5, [(h, {"size": 19, "bold": True, "font": DISP, "color": INK})])
-    text(s, x + 0.35, 3.8, 5.0, 0.3, [(sub, {"size": 12.5, "color": MUTED})])
-    bullets = []
-    for it in items:
-        bullets.append(("•  " + it, {"size": 12.5, "color": INK, "space_after": 7}))
-    text(s, x + 0.35, 4.25, 4.95, 1.9, para(bullets), spacing=1.1)
-    box(s, x + 0.35, 6.15, 4.85, 0.5, fill=SURF2, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
-    text(s, x + 0.5, 6.15, 4.6, 0.5, [(guard, {"size": 11, "color": MUTED})], anchor=MSO_ANCHOR.MIDDLE)
+# ============================ 6 — DEMO (BOTH) ============================
+s = slide(WHITE)
+chrome(s, "Proof · live demo", "Retail mart, Snowflake → Databricks, 2M rows — both approaches", title_size=22,
+       sub="Two beds share the same rich composed ETL. Same engine, one flag apart.")
+# deterministic card
+rect(s, 0.6, 2.35, 4.25, 2.95, fill=PANEL, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.04)
+rect(s, 0.6, 2.35, 0.08, 2.95, fill=TEAL)
+txt(s, 0.9, 2.5, 3.8, 0.3, [("DETERMINISTIC BED", {"size": 10, "bold": True, "font": HEAD, "color": TEAL})])
+txt(s, 0.9, 2.78, 3.8, 0.3, [("13 findings @ 98% · no LLM · every verdict query-confirmed",
+    {"size": 10, "font": BODY, "color": MUT})], spacing=1.02)
+det_items = ["unit_price → precision · culprit DECIMAL(18,2)",
+             "order_ts_utc → timezone · culprit + INTERVAL '5 HOURS'",
+             "customer_name → string · culprit UPPER(TRIM(...))",
+             "is_active → boolean · CASE 'Y'/'N' → 'true'/'false'",
+             "tax_rate → within tolerance · correctly benign"]
+txt(s, 0.9, 3.2, 3.9, 1.9, lines([(CHK + it, {"size": 9.5, "color": INK, "sa": 5, "font": BODY}) for it in det_items]), spacing=1.03)
+# hybrid card
+rect(s, 5.15, 2.35, 4.25, 2.95, fill=DARK, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.04)
+rect(s, 5.15, 2.35, 0.08, 2.95, fill=PURP)
+txt(s, 5.45, 2.5, 3.8, 0.3, [("HYBRID BED — + AGENTIC", {"size": 10, "bold": True, "font": HEAD, "color": GOLD})])
+txt(s, 5.45, 2.78, 3.8, 0.3, [("3 defects no rule can name — each query-confirmed @ 95%",
+    {"size": 10, "font": BODY, "color": LMUT})], spacing=1.02)
+hyb_items = [("net_revenue", "missing discount×tax cross-term"),
+             ("amount_usd", "FX joined at month-start, not daily"),
+             ("status_bucket", "dropped 'R' CASE branch → 'Unknown'")]
+yy = 3.24
+for col, cause in hyb_items:
+    txt(s, 5.45, yy, 3.9, 0.5, [(CHK, {"size": 10, "color": GREEN, "bold": True, "font": BODY}),
+        (col + " — ", {"size": 10.5, "color": WHITE, "bold": True, "font": HEAD}),
+        (cause, {"size": 10, "color": LMUT, "font": BODY})], spacing=1.02)
+    yy += 0.56
+txt(s, 5.45, 5.02, 3.9, 0.28, [("Every finding carries 🔧 transformation logic + ⚠️ culprit + source script.",
+    {"size": 8.5, "font": BODY, "color": LMUT})], spacing=1.0)
 
+# ============================ 7 — BENCHMARKS (with data size) ============================
+s = slide(WHITE)
+chrome(s, "Benchmarks · measured on ps-dr-east", "Correct, fast, and scale-bounded on genuine reconcile output", title_size=21)
+tiles = [("100%", "defects detected\n& classified", RED), ("7/7", "hybrid findings\nquery-confirmed", INK),
+         ("~270s", "deterministic RCA\n2M · 3 tables", INK), ("6/6", "concurrent runs\n~500s wall", INK)]
+for i, (n, l, c) in enumerate(tiles):
+    x = 0.6 + i * 2.22
+    rect(s, x, 2.2, 2.05, 1.0, fill=PANEL2, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.08)
+    txt(s, x, 2.3, 2.05, 0.5, [(n, {"size": 26, "bold": True, "font": HEAD, "color": c})],
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    txt(s, x, 2.78, 2.05, 0.4, lines([(seg, {"size": 8.5, "font": BODY, "color": MUT}) for seg in l.split("\n")]),
+        align=PP_ALIGN.CENTER)
+# data-size / scale table
+txt(s, 0.6, 3.42, 8.8, 0.28, [("SCALE & DATA SIZE", {"size": 9.5, "bold": True, "font": HEAD, "color": MUT})])
+tcols = [0.6, 2.15, 3.55, 5.15, 6.55, 8.0]
+theads = ["Source rows", "Stored (Delta)", "Logical", "Reconcile", "RCA det", "RCA hybrid"]
+for cx, h in zip(tcols, theads):
+    txt(s, cx, 3.72, 1.5, 0.25, [(h, {"size": 9, "bold": True, "font": HEAD, "color": TEAL})])
+rect(s, 0.6, 3.98, 8.8, 0.015, fill=LMUT)
+data = [("2,000,000", "~8.5 MB / table", "~0.15 GB", "944 s (warm)", "~270 s", "~390 s"),
+        ("20,000,000", "~94 MB / table", "~1.5 GB", "1,014 s", "~50 s", "— (det shown)")]
+yy = 4.08
+for row in data:
+    for cx, v in zip(tcols, row):
+        txt(s, cx, yy, 1.5, 0.3, [(v, {"size": 9.5, "font": BODY, "color": INK})])
+    yy += 0.36
+txt(s, 0.6, 4.86, 8.8, 0.6, [("Stored = Delta/Parquet bytes (DESCRIBE DETAIL); low-cardinality demo columns compress ~20–30× "
+    "(logical = the GB figure). RCA runs on the bounded recon sample — 10× data grows RCA ~2×, reconcile ~3.2×. "
+    "A true TB run needs wider, higher-cardinality rows (raise N in build_retail_beds.py) — flagged follow-up, "
+    "reproducible from the same scripts.", {"size": 8.5, "font": BODY, "color": MUT})], spacing=1.05)
 
-# ============================ SLIDE 4 — SURFACE MATRIX ============================
-s = slide(WHITE); accent_bar(s)
-eyebrow(s, "Surface fit")
-title(s, "One engine, three entry points — matched to what each workspace allows.", size=25, w=11.5)
-text(s, 0.9, 1.85, 11.5, 0.4, [("The same code-aware engine backs all three surfaces — the RCA notebook is "
-     "identical wherever it runs. Both approaches are available on every surface.", {"size": 13, "color": MUTED})],
-     spacing=1.15)
-# table
-cols = [0.9, 4.6, 6.7, 9.1]  # x of Entry, Det, Hybrid, Best-for
-widths = [3.5, 2.0, 2.3, 3.3]
-head = ["ENTRY POINT", "DETERMINISTIC", "HYBRID (DET + AGENTIC)", "BEST FOR"]
-y = 2.55
-for cx, w, h in zip(cols, widths, head):
-    text(s, cx, y, w, 0.3, [(h, {"size": 10.5, "bold": True, "font": MONO, "color": MUTED})])
-box(s, 0.9, y + 0.34, 11.5, 0.02, fill=LINE)
-rows = [
-    ("Databricks App", "web UI · no local setup", "✓ default", GOOD, "✓ toggle → FM endpoint", GOOD,
-     "Analysts & leadership; Genie-restricted workspaces"),
-    ("CLI", "python -m rca_engine.cli", "✓ default", GOOD, "✓ --endpoint", GOOD,
-     "CI/CD & automation; Genie-restricted workspaces"),
-    ("Genie Code skill", "rca-recon · agent mode", "✓ llm off", GOOD, "✓ BEST — interactive agent", HEAT,
-     "Flexible workspaces wanting the live agentic experience"),
-]
-y = 3.05
-for name, sub, det, detc, hyb, hybc, best in rows:
-    text(s, cols[0], y, widths[0], 0.4, [(name, {"size": 14, "bold": True, "font": DISP, "color": INK})])
-    text(s, cols[0], y + 0.32, widths[0], 0.3, [(sub, {"size": 10.5, "font": MONO, "color": MUTED})])
-    text(s, cols[1], y, widths[1], 0.4, [(det, {"size": 12.5, "bold": True, "color": detc})])
-    text(s, cols[2], y, widths[2], 0.4, [(hyb, {"size": 12.5, "bold": True, "color": hybc})])
-    text(s, cols[3], y, widths[3], 0.7, [(best, {"size": 12, "color": MUTED})], spacing=1.05)
-    box(s, 0.9, y + 0.78, 11.5, 0.015, fill=LINE)
-    y += 1.0
-
-
-# ============================ SLIDE 5 — DECISION ============================
-s = slide(PAPER); accent_bar(s)
-eyebrow(s, "Decision guide")
-title(s, "Which entry point? Start with one question — is Genie Code approved?", size=25, w=11.5)
-text(s, 0.9, 1.85, 11.5, 0.6, [("Genie Code isn’t enabled in every customer workspace. It never blocks "
-     "ReconResolve: deterministic RCA runs everywhere, and the agentic tier runs wherever a Foundation-Model "
-     "serving endpoint is permitted.", {"size": 13, "color": MUTED})], spacing=1.15)
-paths = [
-    ("⛔  Genie Code NOT approved", "restricted / regulated workspace", HEAT, HEATS,
-     [("Deterministic", "App  ·  CLI  ship as-is — no model, fully auditable."),
-      ("Hybrid", "App toggle · CLI --endpoint when an FM endpoint is allowed; else stay deterministic.")]),
-    ("✅  Genie Code approved", "flexible workspace", STEEL, STEELS,
-     [("Deterministic", "Any surface — skill (llm off), or App / CLI."),
-      ("Hybrid", "Genie Code skill — best: the agent reasons live. App / CLI + endpoint also work.")]),
-]
-for i, (top, q, c, cs, rows2) in enumerate(paths):
-    x = 0.9 + i * 5.95
-    box(s, x, 2.65, 5.55, 3.2, fill=WHITE, line=LINE, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.03)
-    box(s, x, 2.65, 5.55, 0.85, fill=cs, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.05)
-    box(s, x, 3.3, 5.55, 0.2, fill=cs)  # square off bottom of header
-    text(s, x + 0.35, 2.8, 5.0, 0.4, [(top, {"size": 16, "bold": True, "font": DISP, "color": INK})])
-    text(s, x + 0.35, 3.18, 5.0, 0.3, [(q.upper(), {"size": 10, "font": MONO, "color": MUTED})])
-    yy = 3.75
-    for mode, rec in rows2:
-        text(s, x + 0.35, yy, 1.4, 0.9, [(mode.upper(), {"size": 10.5, "bold": True, "font": MONO, "color": MUTED})])
-        text(s, x + 1.75, yy, 3.5, 0.9, [(rec, {"size": 12.5, "color": INK})], spacing=1.12)
-        yy += 1.0
-text(s, 0.9, 6.15, 11.5, 0.6, [("Same engine underneath — the RCA notebook is identical on every path. The "
-     "choice is workspace policy and experience, never capability.", {"size": 12.5, "color": MUTED, "bold": False})],
-     spacing=1.1)
-
-
-# ============================ SLIDE 6 — DEMO / AGENTIC WINS ============================
-s = slide(WHITE); accent_bar(s, AGENT)
-eyebrow(s, "Proof · live demo", color=AGENT)
-title(s, "Retail mart, Snowflake → Databricks, 2M rows — genuine Lakebridge reconcile.", size=23, w=11.5)
-text(s, 0.9, 1.8, 11.5, 0.6, [("Deterministic bed: 13 findings at 98%, every verdict query-confirmed. "
-     "Hybrid bed adds three defects no rule can name — each precisely root-caused by the agentic tier and "
-     "proven by a live reconstruction query:", {"size": 13, "color": MUTED})], spacing=1.15)
-wins = [
-    ("fact_sales.net_revenue", "ROUND(qty*price*(1+tax)\n   - qty*price*discount, 4)",
-     "Missing cross-term.", " Discount & tax applied additively — the (1−d)(1+t) cross-term is dropped, inflating revenue."),
-    ("fact_sales.amount_usd", "JOIN dim_fx\n  ON fx_date =\n     trunc(dt,'MM')",
-     "FX join grain.", " Joined at month-start instead of the daily rate — intra-month drift is lost."),
-    ("fact_sales.status_bucket", "CASE status_code\n  WHEN 'A'..'C'..'P'\n  ELSE 'Unknown' END",
-     "Dropped CASE branch.", " No arm for 'R' (Returned) — those rows collapse to 'Unknown'."),
-]
-for i, (col, sql, cause_b, cause) in enumerate(wins):
-    x = 0.9 + i * 3.95
-    box(s, x, 2.55, 3.7, 3.9, fill=WHITE, line=LINE, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.04)
-    tg = box(s, x + 0.3, 2.8, 1.9, 0.34, fill=AGENTS, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.5)
-    text(s, x + 0.3, 2.8, 1.9, 0.34, [("AGENTIC · CONFIRMED", {"size": 8.5, "bold": True, "font": MONO, "color": AGENT})],
-         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-    text(s, x + 0.3, 3.25, 3.2, 0.3, [(col, {"size": 12.5, "bold": True, "font": MONO, "color": INK})])
-    box(s, x + 0.3, 3.65, 3.1, 1.15, fill=SURF2, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.06)
-    text(s, x + 0.45, 3.72, 2.9, 1.05, [(sql, {"size": 9.5, "font": MONO, "color": INK})], spacing=1.05)
-    text(s, x + 0.3, 4.95, 3.2, 1.1, [(cause_b, {"size": 12, "bold": True, "color": HEAT}),
-         (cause, {"size": 12, "color": MUTED})], spacing=1.12)
-    text(s, x + 0.3, 6.05, 3.2, 0.3, [("✓ query-confirmed · 95%", {"size": 11, "bold": True, "font": MONO, "color": GOOD})])
-
-
-# ============================ SLIDE 7 — BENCHMARKS ============================
-s = slide(PAPER); accent_bar(s)
-eyebrow(s, "Benchmarks · measured on ps-dr-east")
-title(s, "Correct, fast, and scale-bounded on genuine reconcile output.", size=25, w=11.5)
-tiles = [("100%", "Seeded defects detected & correctly classified", True),
-         ("7/7", "Hybrid findings query-confirmed (4 det + 3 agentic)", False),
-         ("~270s", "Deterministic RCA · 3 tables · 2M rows · full enrichment", False),
-         ("6/6", "Concurrent RCA runs succeeded — ~500s wall (fleet)", False)]
-for i, (n, l, hl) in enumerate(tiles):
-    x = 0.9 + i * 2.98
-    box(s, x, 2.35, 2.75, 1.65, fill=WHITE, line=LINE, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.06)
-    text(s, x + 0.28, 2.5, 2.4, 0.7, [(n, {"size": 34, "bold": True, "font": DISP, "color": (HEAT if hl else INK)})])
-    text(s, x + 0.28, 3.25, 2.3, 0.7, [(l, {"size": 10.5, "color": MUTED})], spacing=1.05)
-# latency bar chart
-box(s, 0.9, 4.3, 11.5, 2.55, fill=WHITE, line=LINE, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.02)
-text(s, 1.2, 4.5, 8, 0.35, [("Stage latency", {"size": 15, "bold": True, "font": DISP, "color": INK}),
-     ("   2M-row retail bed · seconds", {"size": 11, "font": MONO, "color": MUTED})])
-bars = [("Reconcile (warm)", 944, STEEL), ("RCA · hybrid", 390, AGENT), ("RCA · deterministic", 270, STEEL),
-        ("RCA · deterministic (lean)", 24, RGBColor(0x9D, 0xB8, 0xD2)), ("Aggregate RCA", 18, GOOD)]
-maxv = 944.0; x0 = 4.0; maxw = 7.6
-y = 5.05
-for lbl, v, c in bars:
-    text(s, 1.2, y - 0.03, 2.7, 0.3, [(lbl, {"size": 10.5, "font": MONO, "color": MUTED})])
-    w = max(0.12, maxw * v / maxv)
-    box(s, x0, y, w, 0.24, fill=c, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.4)
-    text(s, x0 + w + 0.1, y - 0.03, 1.2, 0.3, [(f"{v}s", {"size": 10.5, "bold": True, "font": MONO, "color": INK})])
-    y += 0.36
-text(s, 1.2, 6.5, 11, 0.3, [("RCA cost is driven by optional live checks + FM calls (each toggleable) — not raw "
-     "volume. 10× the data (2M→20M) grows RCA ~2×, reconcile ~3.2×; every seeded defect still caught.",
-     {"size": 10.5, "color": MUTED})], spacing=1.1)
-
-
-# ============================ SLIDE 8 — IMPACT ============================
-s = slide(WHITE); accent_bar(s)
-eyebrow(s, "Why it matters")
-title(s, "Technical rigor that converts directly into migration throughput.", size=25, w=11.5)
-tech = [("Query-gated, never hallucinated", "Every verdict — deterministic or agentic — is proven by a re-runnable query."),
-        ("Code-aware to the sub-expression", "Names the exact culprit (a scale, an interval, a dropped CASE arm) and the source script."),
-        ("One engine, three surfaces", "App, CLI, and Genie skill share the engine — identical output, deterministic & agentic on each."),
-        ("Scale-bounded", "Runs on the recon sample + scope-bounded checks; proven at 20M rows, six concurrent runs.")]
-biz = [("Days → minutes per migration", "Reviewer-ready root cause for every difference — engineers fix instead of investigate."),
-       ("Fits every customer", "Deterministic ships to Genie-restricted & regulated workspaces; agentic where allowed."),
-       ("Auditable & trusted", "An append-only audit trail and a query behind every verdict make results defensible."),
-       ("Reusable asset", "Dialect-agnostic knowledge bases + a repeatable harness = a program-wide capability.")]
-for i, (head, items, c) in enumerate([("Technical impact", tech, STEEL), ("Business impact", biz, HEAT)]):
-    x = 0.9 + i * 5.95
-    text(s, x, 2.4, 5.4, 0.4, [(head, {"size": 17, "bold": True, "font": DISP, "color": c})])
-    yy = 3.05
+# ============================ 8 — IMPACT ============================
+s = slide(WHITE)
+chrome(s, "Why it matters", "Technical rigor that converts into migration throughput", title_size=23)
+tech = [("Query-gated, never hallucinated", "Every verdict proven by a re-runnable query."),
+        ("Code-aware to the sub-expression", "Names the exact culprit + the source script."),
+        ("One engine, three surfaces", "App · CLI · Genie — identical output, det & agentic."),
+        ("Scale-bounded", "Recon sample + scoped checks; 20M rows, 6 concurrent.")]
+biz = [("Days → minutes per migration", "Reviewer-ready root cause for every difference."),
+       ("Fits every customer", "Deterministic for Genie-restricted; agentic where allowed."),
+       ("Auditable & trusted", "Append-only audit trail; a query behind every verdict."),
+       ("Reusable asset", "Dialect-agnostic KBs + harness = program-wide capability.")]
+for i, (head, items, c) in enumerate([("Technical impact", tech, TEAL), ("Business impact", biz, RED)]):
+    x = 0.6 + i * 4.55
+    txt(s, x, 2.3, 4.2, 0.35, [(head, {"size": 15, "bold": True, "font": HEAD, "color": c})])
+    yy = 2.8
     for b, sub in items:
-        box(s, x, yy, 0.05, 0.85, fill=c)
-        text(s, x + 0.25, yy, 5.2, 0.35, [(b, {"size": 13.5, "bold": True, "color": INK})])
-        text(s, x + 0.25, yy + 0.35, 5.2, 0.6, [(sub, {"size": 11.5, "color": MUTED})], spacing=1.1)
-        yy += 1.0
+        rect(s, x, yy + 0.02, 0.05, 0.55, fill=c)
+        txt(s, x + 0.22, yy, 4.0, 0.3, [(b, {"size": 11.5, "bold": True, "font": HEAD, "color": INK})])
+        txt(s, x + 0.22, yy + 0.28, 4.0, 0.35, [(sub, {"size": 9.5, "font": BODY, "color": MUT})], spacing=1.0)
+        yy += 0.66
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ReconResolve_Leadership.pptx")
 prs.save(out)
-print("saved", out, "·", len(prs.slides._sldIdLst), "slides")
+print("saved", out, "·", len(prs.slides._sldIdLst), "slides · 10x5.63 · Barlow/DM Sans template")
