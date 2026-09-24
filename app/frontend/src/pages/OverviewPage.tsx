@@ -191,6 +191,18 @@ export function OverviewPage() {
           <div className="k">Overall row match</div>
           <div className="v">{view.overall_row_match_pct.toFixed(1)}<small>%</small></div>
         </div>
+        {(() => {
+          const fs = view.findings || [];
+          const avg = fs.length ? Math.round((fs.reduce((a, f) => a + (f.confidence || 0), 0) / fs.length) * 100) : 0;
+          const confirmed = fs.filter((f) => f.confirmed).length;
+          return (
+            <div className="card">
+              <div className="k">✓ Avg confidence</div>
+              <div className="v" style={{ color: "var(--green, #3fb950)" }}>{avg}<small>%</small></div>
+              <div className="k" style={{ marginTop: 4, opacity: 0.8 }}>{confirmed}/{fs.length} query-confirmed</div>
+            </div>
+          );
+        })()}
         <div className="card">
           <div className="k">🔧 Migration-induced</div>
           <div className="v" style={{ color: "var(--lava-2)" }}>{c.migration_induced || 0}</div>
