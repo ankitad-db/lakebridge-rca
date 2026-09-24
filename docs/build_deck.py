@@ -307,7 +307,7 @@ for cx, h in zip(tcols, theads):
 rect(s, 0.6, 3.98, 8.8, 0.015, fill=LMUT)
 data = [("2,000,000", "~8.5 MB / table", "~0.15 GB", "944 s (warm)", "~270 s", "~390 s"),
         ("20,000,000", "~94 MB / table", "~1.5 GB", "1,014 s", "~50 s", "— (det)"),
-        ("50,000,000 (wide)", "8.5 GB / table", "~17 GB", "1,637 s", "~97 s", "— (det)")]
+        ("50,000,000 (wide)", "8.5 GB / table", "~17 GB", "1,637 s", "~97 s", "~268 s")]
 yy = 4.06
 for i, row in enumerate(data):
     for cx, v in zip(tcols, row):

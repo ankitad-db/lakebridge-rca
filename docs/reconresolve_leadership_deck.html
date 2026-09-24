@@ -368,7 +368,7 @@ footer .wrap{padding-block:28px;display:flex;justify-content:space-between;flex-
       <tbody>
         <tr><td>2,000,000</td><td>~8.5 MB/table</td><td>~0.15 GB</td><td>944 s (warm)</td><td>~270 s</td><td>~390 s</td></tr>
         <tr><td>20,000,000</td><td>~94 MB/table</td><td>~1.5 GB</td><td>1,014 s</td><td>~50 s</td><td>—</td></tr>
-        <tr class="hl"><td>50,000,000 (wide)</td><td>8.5 GB/table</td><td>~17 GB</td><td>1,637 s</td><td>~97 s</td><td>—</td></tr>
+        <tr class="hl"><td>50,000,000 (wide)</td><td>8.5 GB/table</td><td>~17 GB</td><td>1,637 s</td><td>~97 s</td><td>~268 s</td></tr>
       </tbody>
     </table>
     <p class="note"><b>Prod-volume proof (bottom row):</b> 50M WIDE high-cardinality rows = 8.5 GB stored/table (~17 GB) — reconcile 27 min, RCA ~97 s, with 🔧/📄/⚠️ rendered at scale. Stored = <span class="mono">DESCRIBE DETAIL</span>; low-cardinality demo columns compress ~20–30× (logical = GB column). TB = the same script with larger N + wider rows (a data-gen + warehouse cost, not an engine limit).</p>
@@ -397,33 +397,6 @@ footer .wrap{padding-block:28px;display:flex;justify-content:space-between;flex-
         <li>Agentic root-cause needs an FM endpoint + a good confirming query — query-gated, so a miss stays needs-review, never wrong</li>
         <li>TB-scale needs wider / higher-cardinality rows (50M / 8.5 GB shown; TB = data-gen + warehouse cost)</li>
         <li>A joined derivation (e.g. FX) needs the lookup table’s columns — supplied via join-context</li></ul></div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="sechead"><p class="eyebrow">RCA skill · test coverage</p>
-      <h2>50 cases across 8 capability areas.</h2></div>
-    <div class="tiles">
-      <div class="tile"><div class="n">50</div><div class="l">test cases</div></div>
-      <div class="tile"><div class="n" style="color:var(--green)">94%</div><div class="l">passed (47/50)</div></div>
-      <div class="tile"><div class="n" style="color:var(--gold)">1</div><div class="l">partial</div></div>
-      <div class="tile"><div class="n" style="color:var(--red)">2</div><div class="l">failed</div></div>
-    </div>
-    <div class="band"><b>Tested:</b> core behaviour · accuracy of findings · handling bad input · query cost control · reading the SQL code · pinpointing the pipeline step · tracing data lineage · multi-source scoping</div>
-    <div class="vcols">
-      <div><h3>✅ What worked</h3><ul class="w">
-        <li>Explains every mismatch and proves it with a live check query</li>
-        <li>Sorts differences into 9 types; tells a migration bug from a real data change</li>
-        <li>Reads the source &amp; target SQL and quotes the exact code behind each difference</li>
-        <li>Points to the exact step in a multi-step pipeline where the problem began</li>
-        <li>With several parallel source tables, checks only the ones feeding the broken table</li></ul></div>
-      <div><h3>🔎 Needs investigation</h3><ul class="c">
-        <li>Varying timezone offsets in target are reported as a single constant offset</li>
-        <li>Code-reading pins to a parser version (sqlglot 25); the newest release breaks it</li>
-        <li>Blast radius from an un-reconciled upstream node — the deterministic flow missed it; the agentic tier caught it (partial)</li>
-        <li>A bad recon_id returns an empty result instead of a clear error (low)</li></ul></div>
     </div>
   </div>
 </section>

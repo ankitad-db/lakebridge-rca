@@ -116,6 +116,7 @@ compressed MB — with the same seeded defects so RCA still root-causes. recon_i
 |---|--:|
 | Lakebridge `reconcile` (50M × wide, ~17 GB) | **1,637 s (~27 min)** |
 | ReconResolve RCA — deterministic, code-aware | **~97 s** |
+| ReconResolve RCA — hybrid (+ agentic fallback) | **~268 s** (net_revenue + amount_usd query-confirmed at 50M) |
 
 **Result:** at **50M rows / ~17 GB**, reconcile completed in ~27 min and RCA in **~97 s** — RCA
 stays flat because it runs on the bounded recon **sample**, not the raw volume, and the code-aware
