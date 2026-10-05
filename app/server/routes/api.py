@@ -72,6 +72,8 @@ def get_config():
         "source_schema": s.source_schema,
         "target_schema": s.target_schema,
         "audit_table": s.audit_table,
+        "validation_tool": s.validation_tool,
+        "avf_reports_schema": s.avf_reports_schema,
     }
 
 
@@ -92,6 +94,12 @@ def get_audit(limit: int = 50, catalog: str | None = None):
     """Recent pipeline audit rows (reconcile + RCA history), newest first."""
     s = _settings(catalog)
     return {"audit_table": s.audit_table, "rows": svc.list_audit(s, limit=limit)}
+
+
+@router.get("/portfolio")
+def get_portfolio(catalog: str | None = None):
+    """Migration-wide roll-up across every recon: inventory + verdict mix + top causes."""
+    return svc.portfolio_summary(_settings(catalog))
 
 
 @router.get("/schemas")
@@ -127,12 +135,12 @@ def get_runs(catalog: str | None = None):
 
 @router.get("/runs/{recon_id}")
 def get_run(recon_id: str, catalog: str | None = None, dialect: str | None = None):
-    result = svc.load_result(_settings(catalog, dialect), recon_id)
-    if result is None:
+    view = svc.run_view(_settings(catalog, dialect), recon_id)
+    if view is None:
         raise HTTPException(status_code=404,
                             detail=f"No RCA bundle for '{recon_id}'. Generate one with the "
                                    f"skill/CLI, or enable on-demand analysis.")
-    return svc.build_view(result)
+    return view
 
 
 @router.get("/runs/{recon_id}/tables")

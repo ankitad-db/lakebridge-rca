@@ -17,7 +17,7 @@ const VERDICT_ICON: Record<Verdict, string> = {
 const VERDICT_LABEL: Record<Verdict, string> = {
   migration_induced: "Migration-induced",
   genuine_data: "Genuine data",
-  benign: "Benign",
+  benign: "Expected — no action",
   needs_review: "Needs review",
 };
 

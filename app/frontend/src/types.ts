@@ -11,6 +11,8 @@ export interface AppConfig {
   source_schema: string;
   target_schema: string;
   audit_table: string;
+  validation_tool: string;      // "lakebridge" | "avf" — which validation tool's output is analyzed
+  avf_reports_schema: string;   // catalog.schema of the avf_* tables (AVF only)
 }
 
 export interface AuditRow {
@@ -95,6 +97,32 @@ export interface ReconRun {
   has_bundle?: boolean;
 }
 
+export interface PortfolioRun {
+  recon_id: string;
+  started: string | null;
+  table_pairs: number;
+  tables_with_diffs: number;
+  clean: boolean;
+  has_bundle: boolean;
+  findings: number;
+  verdicts: Record<string, number>;
+  mode: string;
+}
+
+export interface Portfolio {
+  recons: number;
+  with_rca: number;
+  table_pairs: number;
+  tables_clean: number;
+  tables_with_diffs: number;
+  findings_total: number;
+  actionable: number;
+  verdict_counts: Record<string, number>;
+  verdict_meta: Record<string, { icon: string; label: string; action: string }>;
+  top_causes: { category: string; label: string; count: number }[];
+  runs: PortfolioRun[];
+}
+
 export interface Evidence {
   label: string;
   detail: string;
@@ -113,6 +141,10 @@ export type Severity = "High" | "Medium" | "Low";
 export interface FindingView {
   location: string;
   table: string;
+  source_table: string;
+  source_ref: string;
+  target_ref: string;
+  dialect: string;
   column: string | null;
   recon_type: string;
   mismatch_count: number;
@@ -141,6 +173,8 @@ export interface TableView {
   missing_in_source: number;
   absolute_mismatch: number;
   row_match_pct: number;
+  col_match_pct: number;
+  diff_columns: string[];
   schema_ok: boolean;
   findings_count: number;
   verdicts: Record<string, number>;
@@ -193,6 +227,8 @@ export interface RunView {
   verdict_counts: Record<string, number>;
   verdict_meta: Record<string, { icon: string; label: string; action: string }>;
   overall_row_match_pct: number;
+  overall_col_match_pct: number;
+  columns_changed: number;
   table_pairs: number;
   findings_total: number;
   top_priorities: FindingView[];

@@ -11,9 +11,26 @@ import {
   setActiveMode,
 } from "../api";
 
+function getTheme(): "light" | "dark" {
+  const t = document.documentElement.getAttribute("data-theme");
+  return t === "light" ? "light" : "dark";
+}
+
 export function Layout({ config, children }: { config: AppConfig | null; children: ReactNode }) {
   const loc = useLocation();
   const onDashboard = /^\/runs\/.+/.test(loc.pathname);
+  const [theme, setTheme] = useState<"light" | "dark">(getTheme());
+
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem("rr-theme", next);
+    } catch {
+      /* storage blocked — the in-DOM attribute still applies for this session */
+    }
+    setTheme(next);
+  }
   const [catalogs, setCatalogs] = useState<string[]>([]);
   const [catalog, setCatalog] = useState<string>(getActiveCatalog());
   const [dialects, setDialects] = useState<string[]>([]);
@@ -56,6 +73,8 @@ export function Layout({ config, children }: { config: AppConfig | null; childre
   const options = Array.from(new Set([current, ...catalogs].filter(Boolean)));
   const curDialect = dialect || config?.dialect || "";
   const dialectOptions = Array.from(new Set([curDialect, ...dialects].filter(Boolean)));
+  const tool = (config?.validation_tool || "lakebridge").toLowerCase();
+  const toolLabel = tool === "avf" ? "AVF" : "Lakebridge";
 
   return (
     <div className="app">
@@ -64,8 +83,25 @@ export function Layout({ config, children }: { config: AppConfig | null; childre
           <div className="logo" />
           <div>
             <div className="name">ReconResolve</div>
-            <div className="sub">Post-Lakebridge RCA</div>
+            <div className="sub">Post-migration RCA</div>
           </div>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
+          </button>
+        </div>
+
+        <div className={`vtool-badge ${tool}`} title={
+          tool === "avf"
+            ? `Validation tool: AVF${config?.avf_reports_schema ? ` · ${config.avf_reports_schema}` : ""}`
+            : "Validation tool: Lakebridge reconcile"
+        }>
+          <span className="dot" /> VALIDATION · {toolLabel}
         </div>
 
         {!config?.demo_mode && (
@@ -100,8 +136,8 @@ export function Layout({ config, children }: { config: AppConfig | null; childre
           <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
             🏠 Overview
           </NavLink>
-          <NavLink to="/trigger" className={({ isActive }) => (isActive ? "active" : "")}>
-            ⚡ Trigger recon
+          <NavLink to="/portfolio" className={({ isActive }) => (isActive ? "active" : "")}>
+            🩺 Migration Health
           </NavLink>
           <NavLink to="/runs" className={({ isActive }) => (isActive ? "active" : "")}>
             📥 Recon runs
@@ -117,7 +153,7 @@ export function Layout({ config, children }: { config: AppConfig | null; childre
         <div className="foot">
           {config?.demo_mode ? "Demo mode · bundled sample" : `${current}.${config?.recon_schema}`}
           <br />
-          dialect: {config?.dialect || "—"}
+          via {toolLabel} · dialect: {config?.dialect || "—"}
         </div>
       </aside>
       <main className="main">{children}</main>

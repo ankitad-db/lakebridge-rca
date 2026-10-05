@@ -37,16 +37,29 @@ env:
     value: "4c79c6902dd2bbc2"
 
   # Writable scratch dir for freshly-analyzed table bundles (the app source path
-  # is read-only). In live mode the runs list comes from the warehouse, so the
-  # committed demo bundles are not needed here.
-  - name: RCA_BUNDLES_DIR
-    value: "/tmp/rca_bundles"
+  # is read-only). Unset here so it defaults to the committed app/bundles/ — which now
+  # holds REAL RCA bundles for every recon (Migration Health + per-recon dashboards read
+  # these). Per-table on-demand analysis is off (RCA_ALLOW_ONDEMAND=false), so no writes.
+  # - name: RCA_BUNDLES_DIR
+  #   value: "/tmp/rca_bundles"
 
   # Per-table analysis runs live with just the warehouse set (fast, ~5s/table).
   # Set to "true" to also let the run dashboard compute a full run on load
   # (slower for large runs); off keeps the app snappy on the one-table flow.
   - name: RCA_ALLOW_ONDEMAND
     value: "false"
+
+  # Validation-tool-agnostic ingest. "lakebridge" (default) analyzes reconcile main/metrics/
+  # details; "avf" analyzes the Auto Validation Framework avf_* report tables for a run_id.
+  # Switching the tool changes only ingest — the engine, bundles, dashboards, and notebook are
+  # identical, and the Lakebridge path is unchanged. For AVF set RCA_AVF_REPORTS_SCHEMA to the
+  # catalog.schema holding the avf_* tables (defaults to RCA_RECON_CATALOG.RCA_RECON_SCHEMA).
+  - name: RCA_VALIDATION_TOOL
+    value: "lakebridge"
+  - name: RCA_AVF_REPORTS_SCHEMA
+    value: ""
+  - name: RCA_AVF_CONSUME_RCA
+    value: "true"
 
   # Workspace folder the "Run full RCA" action publishes generated notebooks into.
   # The app's service principal needs write (CAN_MANAGE) on this folder.
@@ -87,3 +100,23 @@ env:
     value: "/Workspace/Users/ankita.darekar@databricks.com/rca-recon-skill/scripts/job_entry"
   - name: RCA_SKILL_OUT_DIR
     value: "/Workspace/Users/ankita.darekar@databricks.com/rca_skill_out"
+
+  # Real Lakebridge reconcile: when on, the "Trigger recon" flow submits the deployed
+  # LAKEBRIDGE_Reconciliation_Runner job (databricks_labs_lakebridge `reconcile`) instead of
+  # the app-native reconcile, then RCAs the recon_id it writes. Lakebridge reads its own
+  # .lakebridge/reconcile.yml + recon_config_*.json for which tables to compare. The app's
+  # service principal needs CAN_MANAGE_RUN on the job. Set RCA_USE_LAKEBRIDGE_RECON=false to
+  # fall back to the app-native (or skill-job) reconcile.
+  # Code-aware TARGET transform: auto-discover the building job's SQL from
+  # system.access.table_lineage (no scripts to pass); falls back to RCA_TRANSPILED_OUTPUT_DIR
+  # when no building job is found. Source side needs no script (values from recon details,
+  # types from schema_details).
+  - name: RCA_TRACE_JOB
+    value: "true"
+
+  - name: RCA_USE_LAKEBRIDGE_RECON
+    value: "true"
+  - name: RCA_LAKEBRIDGE_JOB_ID
+    value: "1047932225626358"
+  - name: RCA_LAKEBRIDGE_INSTALL_FOLDER
+    value: "/Users/ankita.darekar@databricks.com/.lakebridge"

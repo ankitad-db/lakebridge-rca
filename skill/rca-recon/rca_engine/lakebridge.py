@@ -62,6 +62,7 @@ class TableMapping:
     date_column: Optional[str] = None
     column_map: dict[str, str] = field(default_factory=dict)     # source_col -> target_col
     transforms: dict[str, ColumnTransform] = field(default_factory=dict)  # by target column
+    source_transforms: dict[str, ColumnTransform] = field(default_factory=dict)  # SOURCE EDW derivation, by column
     source_types: dict[str, str] = field(default_factory=dict)   # source col (lower) -> declared type
     source_filter: str = ""
     target_filter: str = ""
@@ -77,6 +78,9 @@ class TableMapping:
 
     def transform_for(self, target_col: str) -> Optional[ColumnTransform]:
         return self.transforms.get(target_col)
+
+    def source_transform_for(self, col: str) -> Optional[ColumnTransform]:
+        return self.source_transforms.get(col) if col else None
 
     def source_type_of(self, col: str) -> Optional[str]:
         return self.source_types.get(col.lower()) if col else None
@@ -438,12 +442,16 @@ def build_mapping(
     source_scripts: str | Path | None = None,
     source_dialect: str = "snowflake",
     table_manifest: list[dict] | None = None,
+    source_transpiled: str | Path | None = None,
 ) -> dict[str, TableMapping]:
     """Merge recon config + source DDL + transpiled SQL + transpile errors into
     per-table mappings, keyed by the short (unqualified) target table name.
 
     ``source_scripts`` = original-dialect DDL (declared source types).
     ``transpiled_output`` = the deployed/transpiled target scripts.
+    ``source_transpiled`` = the SOURCE EDW's build SQL (same column aliases as the target),
+        parsed to recover each column's SOURCE derivation so findings can show the source
+        logic side-by-side with the migrated target logic.
     ``recon_config_path`` = the source<->target mapping (keys, columns, filters).
     ``table_manifest`` = explicit per-table source/target script paths (overrides the
     folder scans; use when file<->table names are ambiguous). All optional; each
@@ -461,6 +469,12 @@ def build_mapping(
                 mapping[k].target_filter = mapping[k].target_filter or m.target_filter
             else:
                 mapping[k] = m
+    if source_transpiled:
+        # Parse the SOURCE build SQL the same way as the target, then keep its per-column
+        # derivations under source_transforms so the RCA can contrast source vs migrated.
+        for k, m in parse_transpiled_dir(source_transpiled).items():
+            mapping.setdefault(k, TableMapping(source_table=k, target_table=k))
+            mapping[k].source_transforms = m.transforms
     if source_scripts:
         src_types = parse_source_dir(source_scripts, read=source_dialect)
         for m in mapping.values():

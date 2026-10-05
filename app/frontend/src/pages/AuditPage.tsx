@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { fmtDateTime } from "../format";
 import type { AppConfig, AuditRow } from "../types";
 
 const OP_ICON: Record<string, string> = { reconcile: "🔁", rca: "🔬", analyze_table: "🔬" };
 
-function fmtWhen(ts: string | null): string {
-  if (!ts) return "—";
-  const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T") + "Z");
-  return isNaN(d.getTime()) ? ts : d.toLocaleString();
+/** Friendly actor name — a service-principal GUID reads as the app; an email trims to its user. */
+function fmtActor(by: string | null | undefined): string {
+  if (!by) return "—";
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(by)) return "rca-genie (app)";
+  return by.includes("@") ? by.split("@")[0] : by;
 }
 
 function fmtDur(ms: number): string {
@@ -72,7 +74,7 @@ export function AuditPage({ config }: { config: AppConfig | null }) {
         </div>
       )}
       {rows && rows.length > 0 && (
-        <div className="panel">
+        <div className="panel" style={{ overflowX: "auto" }}>
           <table>
             <thead>
               <tr>
@@ -80,7 +82,7 @@ export function AuditPage({ config }: { config: AppConfig | null }) {
                 <th>Step</th>
                 <th>Status</th>
                 <th>recon_id</th>
-                <th>Scope</th>
+                <th>Source → Target</th>
                 <th className="num">Pairs</th>
                 <th className="num">Diffs</th>
                 <th className="num">Findings</th>
@@ -92,7 +94,7 @@ export function AuditPage({ config }: { config: AppConfig | null }) {
             <tbody>
               {rows.map((r, i) => (
                 <tr key={`${r.run_id}-${i}`}>
-                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{fmtWhen(r.started_ts)}</td>
+                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{fmtDateTime(r.started_ts)}</td>
                   <td>
                     <span style={{ fontWeight: 600 }}>
                       {OP_ICON[r.operation] || "•"} {r.operation}
@@ -107,15 +109,15 @@ export function AuditPage({ config }: { config: AppConfig | null }) {
                     ) : (
                       <span className="badge v-migration">⚠️ error</span>
                     )}
-                    <span className="pill" style={{ marginLeft: 6 }}>{r.tool}</span>
                   </td>
-                  <td className="mono muted" style={{ fontSize: 12 }}>
+                  <td className="mono muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
                     {r.recon_id ? (
                       <a
                         onClick={() => nav(`/runs/${encodeURIComponent(r.recon_id!)}`)}
+                        title={r.recon_id}
                         style={{ cursor: "pointer", color: "var(--accent, #ff5f46)" }}
                       >
-                        {r.recon_id.slice(0, 12)}…
+                        {r.recon_id}
                       </a>
                     ) : (
                       "—"
@@ -132,7 +134,10 @@ export function AuditPage({ config }: { config: AppConfig | null }) {
                   <td className="num">{r.tables_with_diffs || (r.operation === "rca" ? 0 : "—")}</td>
                   <td className="num">{r.operation === "rca" ? r.findings_total : "—"}</td>
                   <td className="num muted">{fmtDur(r.duration_ms)}</td>
-                  <td className="muted" style={{ fontSize: 12 }}>{r.run_by || "—"}</td>
+                  <td className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                    <span title={r.run_by || ""}>{fmtActor(r.run_by)}</span>
+                    {r.tool && <span className="pill" style={{ marginLeft: 6 }}>{r.tool}</span>}
+                  </td>
                   <td className="num" onClick={(e) => e.stopPropagation()}>
                     {r.notebook_path && config?.workspace_host && (
                       <a

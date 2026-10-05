@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { fmtDateTime } from "../format";
 import type { AppConfig, ReconRun } from "../types";
 import { ModeToggle } from "../components/ModeToggle";
 
@@ -75,7 +76,7 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
                 <th>Started</th>
                 <th className="num">Table pairs</th>
                 <th className="num">With diffs</th>
-                <th>Status</th>
+                <th>Recon result</th>
                 <th></th>
               </tr>
             </thead>
@@ -91,7 +92,7 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
                     {r.source && <div className="muted" style={{ fontSize: 12 }}>{r.source}</div>}
                   </td>
                   <td className="mono muted" style={{ fontSize: 12 }}>{r.recon_id}</td>
-                  <td className="muted">{r.started ? new Date(r.started).toLocaleString() : "—"}</td>
+                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{fmtDateTime(r.started)}</td>
                   <td className="num">{r.table_pairs}</td>
                   <td className="num">{r.tables_with_diffs < 0 ? "?" : r.tables_with_diffs}</td>
                   <td>
@@ -106,9 +107,16 @@ export function RunsPage({ config }: { config: AppConfig | null }) {
                       <button className="btn primary" onClick={() => nav(`/analyze/${encodeURIComponent(r.recon_id)}`)}>
                         ▶ Run RCA
                       </button>
-                      <button className="btn" onClick={() => nav(`/runs/${encodeURIComponent(r.recon_id)}`)}>
-                        Dashboard
-                      </button>
+                      {r.has_bundle ? (
+                        <button className="btn" onClick={() => nav(`/runs/${encodeURIComponent(r.recon_id)}`)}>
+                          Dashboard
+                        </button>
+                      ) : (
+                        <button className="btn" disabled title="Run RCA first to populate this recon's dashboard"
+                          style={{ opacity: 0.45, cursor: "not-allowed" }}>
+                          Dashboard
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

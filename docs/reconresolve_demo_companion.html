@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReconResolve Demo Companion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --red:#FF3620; --ink:#1B3037; --teal:#1B5161; --muted:#618793; --lmuted:#9EB7BE;
+  --paper:#FFFFFF; --surface:#FFFFFF; --line:#E3E7E9; --body:#33474e;
+  --panel:#F6F8F8; --panel2:#EEF3F3;
+  --fd:"Barlow",system-ui,sans-serif; --fb:"DM Sans",system-ui,sans-serif; --fm:"IBM Plex Mono",monospace;
+}
+:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){
+  --ink:#EAF1F3; --teal:#B7CFD6; --muted:#8AA4AD; --lmuted:#7C99A2; --body:#c4d2d6;
+  --paper:#12191c; --surface:#182226; --panel:#1E2A2F; --panel2:#1B262A; --line:#2A383D;
+}}
+:root[data-theme="dark"]{
+  --ink:#EAF1F3; --teal:#B7CFD6; --muted:#8AA4AD; --lmuted:#7C99A2; --body:#c4d2d6;
+  --paper:#12191c; --surface:#182226; --panel:#1E2A2F; --panel2:#1B262A; --line:#2A383D;
+}
+*{box-sizing:border-box;}
+body{background:var(--paper);color:var(--body);font-family:var(--fb);line-height:1.6;font-weight:400;margin:0;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:960px;margin:0 auto;padding:16px;padding-block:44px;}
+h1,h2,h3{font-family:var(--fd);color:var(--ink);text-wrap:balance;margin:0;line-height:1.12;font-weight:700;}
+h1{font-size:2.1rem;letter-spacing:-.01em;}
+h2{font-size:1.35rem;margin-top:8px;}
+h3{font-size:1rem;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;font-family:var(--fd);font-weight:700;font-size:.82rem;}
+.eyebrow{font-family:var(--fd);text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:700;color:var(--red);margin:0 0 6px;}
+.mono{font-family:var(--fm);font-size:.9em;}
+.lead{font-size:1.05rem;color:var(--body);max-width:65ch;}
+hr{border:none;border-top:1px solid var(--line);margin:40px 0;}
+section{margin-top:14px;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:16px;}
+.card.accent{border-left:3px solid var(--red);}
+ul{margin:10px 0 0;padding-left:0;list-style:none;}
+li{position:relative;padding-left:20px;margin:7px 0;}
+li::before{content:"";position:absolute;left:2px;top:.62em;width:6px;height:6px;border-radius:2px;background:var(--teal);}
+li b, li strong{color:var(--ink);font-weight:600;}
+.beat{display:grid;grid-template-columns:130px 1fr;gap:14px;align-items:start;padding:11px 0;border-bottom:1px solid var(--line);}
+.beat:last-child{border-bottom:none;}
+.beat .slot{font-family:var(--fd);font-weight:700;color:var(--teal);font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;padding-top:2px;}
+.beat .say{color:var(--body);}
+.beat .say b{color:var(--ink);font-weight:600;}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.pill{display:inline-block;font-family:var(--fm);font-size:.74rem;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--teal);}
+.tag{display:inline-block;font-family:var(--fd);font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:20px;}
+.tag.det{background:rgba(27,81,97,.12);color:var(--teal);}
+.tag.hyb{background:rgba(255,54,32,.1);color:var(--red);}
+.note{font-size:.82rem;color:var(--muted);margin-top:10px;font-style:italic;}
+.foot{margin-top:44px;font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:16px;}
+@media(max-width:720px){.two{grid-template-columns:1fr;}.beat{grid-template-columns:1fr;gap:2px;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Presenter's companion</p>
+  <h1>ReconResolve — demo companion</h1>
+  <p class="lead">A one-read crib sheet for the leadership demo: a ~90-second script, what the demo ETL actually is, and the crisp feature list to call out in the Skill and the App.</p>
+
+  <hr>
+
+  <!-- ===================== SCRIPT ===================== -->
+  <section>
+    <p class="eyebrow">Speaker notes</p>
+    <h2>~90-second script</h2>
+
+    <div class="card">
+      <div class="beat"><div class="slot">Open</div><div class="say">"When a Lakebridge migration reconciles and the numbers don't match, someone spends <b>days</b> hand-tracing which transform broke. ReconResolve turns that into <b>minutes</b> — and every answer is backed by a query, not a guess."</div></div>
+      <div class="beat"><div class="slot">The how</div><div class="say">"It reads the <b>reconcile metadata</b> plus the <b>migrated SQL</b>, and root-causes each difference two ways: a <b>deterministic</b> tier — rules + one confirming query, no LLM — and a <b>hybrid</b> tier that adds a query-gated FM fallback for the hard, hand-tweaked transforms."</div></div>
+      <div class="beat"><div class="slot">Deterministic</div><div class="say">"Here's a pure-deterministic run — banner says <b>Deterministic</b>. Thirteen findings: precision, case, boolean, timezone, dropped rows — each with the <b>transform logic</b>, the <b>script location + line</b>, the <b>likely culprit</b>, a confidence, and lineage. Fully auditable, reproducible, no model in the loop."</div></div>
+      <div class="beat"><div class="slot">Hybrid</div><div class="say">"Same engine, hybrid mode. The rules nail the mechanical defects. The agentic tier earns its keep on the <b>composed transforms</b> — a missing formula term, a wrong join grain — where it reconstructs the target column and <b>promotes only when a live query confirms</b>. If it can't confirm, it stays <b>needs-review</b> — it never fakes a verdict."</div></div>
+      <div class="beat"><div class="slot">Trust</div><div class="say">"That's the whole design point: <b>the query is the gate.</b> The model proposes; the system disposes. Worst case degrades to needs-review, never a wrong answer presented as fact."</div></div>
+      <div class="beat"><div class="slot">Scale</div><div class="say">"It survives prod volume — <b>50M rows / ~17 GB</b>, RCA in ~90 seconds, because it works on the bounded recon sample, not the raw data."</div></div>
+      <div class="beat"><div class="slot">Close</div><div class="say">"Three surfaces — <b>App, CLI, Genie skill</b> — same engine, same notebook. Pick the surface your workspace policy allows; pick deterministic or hybrid per run with one flag."</div></div>
+    </div>
+    <p class="note">Honesty guardrail if asked "how good is the AI part?": it adds <b>verdict-level precision</b> on composed transforms rules can't name; it's query-gated, so unconfirmed cases fall back to needs-review. Don't claim a fixed hit-rate — claim the gate.</p>
+  </section>
+
+  <hr>
+
+  <!-- ===================== ETL ===================== -->
+  <section>
+    <p class="eyebrow">The demo data</p>
+    <h2>What the recon ETL actually is</h2>
+    <p class="lead">A realistic retail <b>"Sales &amp; Revenue" mart</b>, migrated Snowflake&nbsp;EDW → Databricks&nbsp;Unity Catalog, seeded with <b>one defect per RCA mechanism</b> so the demo exercises every feature.</p>
+
+    <div class="two">
+      <div class="card">
+        <h3>Shape</h3>
+        <ul>
+          <li>Star schema: <b>fact_sales</b> + <span class="mono">dim_customer</span>, <span class="mono">dim_product</span>, <span class="mono">dim_fx</span> (daily rates)</li>
+          <li>Landed raw extract → rebuilt gold tables via an <b>as-built target SQL</b> (<span class="mono">*_target.sql</span>)</li>
+          <li>That SQL is <b>dual-purpose</b>: it builds the target <em>and</em> is the artifact the RCA parses for transform logic + agentic hypotheses</li>
+          <li>Volumes: <b>2M</b> fact rows (demo) · <b>50M / ~17 GB</b> (prod-volume proof)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Two beds, one flag</h3>
+        <ul>
+          <li><span class="tag det">Deterministic</span> <span class="mono">det_target.sql</span> — defects rules fully catch</li>
+          <li><span class="tag hyb">Hybrid</span> <span class="mono">hybrid_target.sql</span> — adds composed-transform defects that need the agentic tier</li>
+          <li>Reconciled with real <b>Lakebridge reconcile</b> → each bed gets a <span class="mono">recon_id</span></li>
+          <li><b>Stress</b>: many concurrent recon jobs; <b>XL bed</b> for the 50M-row run</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card accent">
+      <h3>Seeded defects (the demo's ground truth)</h3>
+      <div class="two">
+        <ul>
+          <li><span class="tag det">Det</span> <b>unit_price</b> — <span class="mono">ROUND(…,2)</span> scale loss</li>
+          <li><span class="tag det">Det</span> <b>customer_name</b> — <span class="mono">UPPER(TRIM())</span> case/format</li>
+          <li><span class="tag det">Det</span> <b>order_ts_utc</b> — <span class="mono">+ 5h</span> timezone shift</li>
+          <li><span class="tag det">Det</span> <b>is_active</b> — <span class="mono">'Y'/'N'</span> → boolean mapping</li>
+          <li><span class="tag det">Det</span> <b>dropped rows</b> — a load filter (<span class="mono">order_id % 500</span>)</li>
+        </ul>
+        <ul>
+          <li><span class="tag hyb">Hybrid</span> <b>net_revenue</b> — discount &amp; tax applied additively; the <span class="mono">(1−d)(1+t)</span> cross-term is missing</li>
+          <li><span class="tag hyb">Hybrid</span> <b>amount_usd</b> — FX joined at <b>month-start</b> grain, not the daily rate</li>
+          <li><span class="tag hyb">Hybrid</span> <b>status_bucket</b> — the <span class="mono">'R'</span> (Returned) CASE branch was dropped</li>
+          <li><span class="tag det">Benign</span> <b>tax_rate</b> — within tolerance → correctly <em>not</em> flagged</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ===================== FEATURES ===================== -->
+  <section>
+    <p class="eyebrow">What to point at</p>
+    <h2>Features to highlight</h2>
+
+    <div class="two">
+      <div class="card">
+        <h3>Genie Code skill</h3>
+        <ul>
+          <li><b>One prompt in.</b> "Root-cause reconciliation &lt;recon_id&gt;" — no config to hand-write</li>
+          <li><b>Mode banner up top</b> — Deterministic vs Hybrid, so the run's mode is unambiguous</li>
+          <li><b>Deterministic = Genie is just the trigger</b> — <span class="mono">llm_synthesis: false</span>, no LLM in the RCA</li>
+          <li><b>Hybrid = interactive agentic tier</b> — proposes a cause + reconstruction query, promotes only if it confirms</li>
+          <li><b>Self-contained notebooks</b> — per table + an index, with transform logic, script location, culprit, confidence, lineage</li>
+          <li><b>Best for flexible workspaces</b> — the richest, most interactive surface</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Databricks App</h3>
+        <ul>
+          <li><b>Zero local setup</b> — web UI for analysts &amp; leadership</li>
+          <li><b>RCA MODE selector on every page</b> — Deterministic ↔ Hybrid (det + agentic fallback)</li>
+          <li><b>Confidence per finding + a run-level rollup</b> across the whole recon</li>
+          <li><b>Trigger a reconciliation from the UI</b> (auto keys → auto-fix → RCA), or analyze an existing <span class="mono">recon_id</span></li>
+          <li><b>Same notebook output</b> as CLI/Skill — one engine behind all three</li>
+          <li><b>Best for Genie-restricted orgs</b> — governed, no-terminal access</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>True on every surface (App · CLI · Skill)</h3>
+      <ul>
+        <li><b>Two tiers, one flag</b> — deterministic (auditable, no LLM) or hybrid (query-gated FM fallback)</li>
+        <li><b>Code-aware RCA</b> — 🔧 transform logic · 📄 script path + line · ⚠️ likely culprit</li>
+        <li><b>Confidence + provenance</b> on each finding; <b>UC lineage</b> trace-back to where the defect entered</li>
+        <li><b>The query is the gate</b> — nothing is presented as proven unless a live query confirms it</li>
+        <li><b>Suggested, review-then-run fixes</b> — never auto-applied</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="foot">
+    ReconResolve · post-Lakebridge reconciliation RCA · deterministic + hybrid · App · CLI · Genie Code skill.
+    Companion to the leadership deck — talking points only.
+  </div>
+
+</div>
+</body>
+</html>

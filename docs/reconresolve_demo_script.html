@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReconResolve Demo Script</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --red:#FF3620; --ink:#1B3037; --teal:#1B5161; --muted:#618793; --lmuted:#9EB7BE;
+  --paper:#FFFFFF; --surface:#FFFFFF; --line:#E3E7E9; --body:#33474e; --panel:#F6F8F8; --panel2:#EEF3F3;
+  --fd:"Barlow",system-ui,sans-serif; --fb:"DM Sans",system-ui,sans-serif; --fm:"IBM Plex Mono",monospace;
+}
+:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){
+  --ink:#EAF1F3; --teal:#B7CFD6; --muted:#8AA4AD; --body:#c4d2d6; --paper:#12191c; --surface:#182226; --panel:#1E2A2F; --panel2:#1B262A; --line:#2A383D;
+}}
+:root[data-theme="dark"]{
+  --ink:#EAF1F3; --teal:#B7CFD6; --muted:#8AA4AD; --body:#c4d2d6; --paper:#12191c; --surface:#182226; --panel:#1E2A2F; --panel2:#1B262A; --line:#2A383D;
+}
+*{box-sizing:border-box;}
+body{background:var(--paper);color:var(--body);font-family:var(--fb);line-height:1.55;margin:0;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:860px;margin:0 auto;padding:16px;padding-block:44px;}
+h1,h2,h3{font-family:var(--fd);color:var(--ink);text-wrap:balance;margin:0;line-height:1.12;font-weight:700;}
+h1{font-size:2rem;letter-spacing:-.01em;}
+.eyebrow{font-family:var(--fd);text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:700;color:var(--red);margin:0 0 6px;}
+.lead{font-size:1.02rem;color:var(--body);max-width:66ch;margin:8px 0 0;}
+.mono{font-family:var(--fm);font-size:.9em;}
+.meta{font-size:.8rem;color:var(--muted);margin-top:10px;}
+hr{border:none;border-top:1px solid var(--line);margin:30px 0;}
+.sec{display:grid;grid-template-columns:44px 1fr;gap:16px;margin:22px 0;}
+.num{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-family:var(--fd);font-weight:800;color:#fff;background:linear-gradient(135deg,var(--red),#ff5f46);font-size:1rem;}
+.sec.money .num{background:linear-gradient(135deg,var(--teal),#2c7d91);}
+.sh{font-size:1.15rem;font-weight:700;color:var(--ink);}
+.sh .t{color:var(--muted);font-weight:600;font-size:.82rem;font-family:var(--fd);text-transform:uppercase;letter-spacing:.05em;margin-left:8px;}
+.say{margin:8px 0 0;}
+.say b{color:var(--ink);}
+.tag{display:inline-block;font-family:var(--fd);font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:20px;margin-right:6px;vertical-align:middle;}
+.tag.say{background:rgba(255,54,32,.1);color:var(--red);}
+.tag.show{background:rgba(27,81,97,.12);color:var(--teal);}
+.show{font-size:.86rem;color:var(--muted);margin-top:6px;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:20px;}
+.card.accent{border-left:3px solid var(--teal);}
+ul{margin:8px 0 0;padding-left:18px;}
+li{margin:5px 0;}
+.foot{margin-top:36px;font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;}
+@media(max-width:600px){.sec{grid-template-columns:1fr;gap:6px;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Demo narration · ~4 minutes</p>
+  <h1>ReconResolve — Demo Script</h1>
+  <p class="lead">Scenario-framed, on-point per section. Demo recon <span class="mono">446d22…</span> — retail Sales &amp; Revenue mart, Snowflake&nbsp;→&nbsp;Databricks, Deterministic.</p>
+  <p class="meta"><span class="tag say">Say</span> speak it &nbsp;·&nbsp; <span class="tag show">Show</span> click it</p>
+
+  <hr>
+
+  <div class="sec">
+    <div class="num">0</div>
+    <div>
+      <div class="sh">The scenario <span class="t">15s</span></div>
+      <p class="say"><span class="tag say">Say</span> "We migrated our retail <b>Sales &amp; Revenue</b> mart from Snowflake to Databricks with Lakebridge. Reconcile flags differences across the tables. Every migration hits the same question — <b>which differences are migration bugs, which are real data, and how do we fix them?</b> That's ReconResolve."</p>
+      <p class="show"><span class="tag show">Show</span> The app landing / Overview.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="num">1</div>
+    <div>
+      <div class="sh">Entry point <span class="t">20s</span></div>
+      <p class="say"><span class="tag say">Say</span> "ReconResolve starts where Lakebridge reconcile ends. Its <b>input is the reconcile output</b> — a <span class="mono">recon_id</span>. We don't re-reconcile; we <b>leverage what Lakebridge already produced</b> and root-cause it."</p>
+      <p class="say"><span class="tag say">Say</span> "Two modes — <b>Deterministic</b>: rules + one live confirming query, no LLM, fully auditable (<i>this demo runs deterministic — every finding is proven by a query</i>). <b>Hybrid</b>: adds a query-gated Foundation-Model tier for the hard, hand-tweaked transforms. The model proposes; a query confirms; a guess never sticks."</p>
+      <p class="show"><span class="tag show">Show</span> Overview → the "How you'll use it" strip.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="num">2</div>
+    <div>
+      <div class="sh">Migration Health — the leadership view <span class="t">25s</span></div>
+      <p class="say"><span class="tag say">Say</span> "The migration-wide picture. <b>KPIs</b> — recons, tables, findings, and <i>actionable</i> work. The <b>verdict mix</b> — migration-induced vs genuine-data vs expected vs needs-review. And the <b>top recurring root causes</b> — timezone, precision, string-format, null/boolean."</p>
+      <p class="say"><span class="tag say">Say</span> "One glance: <b>how healthy is the migration, and where's the work.</b>"</p>
+      <p class="show"><span class="tag show">Show</span> <b>Migration Health</b> — stat tiles, verdict-mix bar, top causes, RCA-mode column.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="num">3</div>
+    <div>
+      <div class="sh">Recon runs — pick a recon, run RCA <span class="t">15s</span></div>
+      <p class="say"><span class="tag say">Say</span> "Recon runs lists every Lakebridge <span class="mono">recon_id</span>. Pick one, choose <b>Deterministic or Hybrid</b>, run RCA. Here's our retail recon — Deterministic."</p>
+      <p class="show"><span class="tag show">Show</span> <b>Recon runs</b> → 446d22 → open dashboard.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="num">4</div>
+    <div>
+      <div class="sh">Run dashboard — where the differences are <span class="t">25s</span></div>
+      <p class="say"><span class="tag say">Say</span> "<b>Rows matched</b> = records present on both sides. <b>Columns changed</b> = the fields the migration altered. <span class="mono">fact_sales</span> — 500,000 orders, <b>99.8% present</b> (~1,000 dropped by a stray load filter), two columns changed: <span class="mono">order_ts_utc</span> and <span class="mono">unit_price</span>. Two kinds of problem at a glance — missing rows, and wrong values in the rows that remain. The tool points at exactly what's broken."</p>
+      <p class="show"><span class="tag show">Show</span> the table → the <span class="mono">fact_sales</span> row.</p>
+    </div>
+  </div>
+
+  <div class="sec money">
+    <div class="num">5</div>
+    <div>
+      <div class="sh">The finding — issue · logic · script · fix <span class="t">40s · the moment</span></div>
+      <p class="say"><span class="tag say">Say</span> "Open <span class="mono">fact_sales → order_ts_utc</span>."</p>
+      <p class="say"><span class="tag say">Say (issue)</span> "Every order's timestamp is exactly <b>5 hours late</b>. The migration 'normalised to UTC' by adding a flat +5h, but the source was already canonical — so an 8 p.m. order lands after midnight, on the <i>next day</i>, and every daily sales-by-day report is shifted."</p>
+      <p class="say"><span class="tag say">Say (proof)</span> "Under it: a <b>column-lineage flow</b> (source <span class="mono">order_ts</span> → the migrated transform → the target column), the exact <b>🔧 transformation logic</b> (<span class="mono">r.order_ts + INTERVAL 5 HOURS</span>), the <b>📄 script + line</b> where it's wrong, and the <b>✔ confirming query</b> — a single, constant 5-hour offset across every order present. Deterministic, no AI — proven by a query."</p>
+      <p class="say"><span class="tag say">Say (verdict)</span> "<b>Migration-induced, 98% confidence</b>, query-confirmed, with the fix and the owner."</p>
+      <p class="show"><span class="tag show">Show</span> expand <span class="mono">order_ts_utc</span> → walk the evidence top to bottom.</p>
+    </div>
+  </div>
+
+  <div class="card accent" style="border-left-color:var(--red)">
+    <div class="sh" style="font-size:1rem;">🔎 Deep-dive: what's wrong in <span class="mono">fact_sales.order_ts_utc</span>, and the fix</div>
+    <p class="say" style="margin-top:10px"><b>The issue:</b> the migration re-timestamped every order to "UTC" by adding a <b>fixed +5 hours</b>, but the Snowflake source was already the canonical time. So every order is shifted 5 hours forward.</p>
+    <ul>
+      <li><b>Correct (Snowflake source):</b> <span class="mono">order_ts_utc = order_ts</span> &nbsp;(already canonical)</li>
+      <li><b>Migrated (target, <span class="mono">revenue_target.sql:32</span>):</b> <span class="mono">order_ts_utc = r.order_ts + INTERVAL 5 HOURS</span></li>
+      <li><b>Why it matters:</b> a fixed offset is not a timezone conversion. Orders near end-of-day roll onto the <b>next calendar day</b>, so anything grouped by day — daily sales, daily revenue, day-over-day trends — is wrong, even though row counts and totals reconcile.</li>
+    </ul>
+    <p class="say"><b>Proven, not guessed:</b> the deterministic drill-down ran a confirming query and found a <b>single distinct offset of exactly 5.00 hours across every order present</b> — the signature of a constant shift, not a genuine timezone/DST conversion → <b>migration-induced, 98%, query-confirmed</b>. UC lineage: source <span class="mono">order_ts</span>.</p>
+    <p class="say"><b>The fix</b> — drop the fixed +5h (or use a real timezone conversion), then re-run reconcile:</p>
+    <pre class="mono" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;font-size:12px;">-- revenue_target.sql:32 — corrected order_ts_utc
+r.order_ts AS order_ts_utc
+-- or, if a real conversion is intended (e.g. US/Eastern → UTC):
+convert_timezone('America/New_York', 'UTC', r.order_ts) AS order_ts_utc</pre>
+    <p class="show">Re-run Lakebridge reconcile on <span class="mono">fact_sales</span> → the difference clears. Owner: migration engineer.</p>
+    <p class="say" style="margin-top:12px"><b>Supporting findings (same recon, same clean treatment):</b> <span class="mono">fact_sales</span> — ~1,000 orders <b>missing</b> (<span class="mono">WHERE order_id % 500 &lt;&gt; 0</span>), a stray <b>load filter</b> (why Rows matched is 99.8%); <span class="mono">unit_price</span> landed as <span class="mono">DECIMAL(18,2)</span> vs source <span class="mono">DECIMAL(18,4)</span> — precision/scale loss; <span class="mono">dim_customer.customer_name</span> — <span class="mono">UPPER(TRIM())</span> vs proper case — string-format.</p>
+  </div>
+
+  <div class="sec">
+    <div class="num">6</div>
+    <div>
+      <div class="sh">Close <span class="t">15s</span></div>
+      <p class="say"><span class="tag say">Say</span> "Every reconcile difference — root-caused, query-backed, with a fix and an owner. Deterministic where rules suffice; AI only for the long tail; never a bare guess. All audited."</p>
+      <p class="say"><span class="tag say">Say</span> "<b>Lakebridge reconciles. ReconResolve resolves.</b>"</p>
+      <p class="show"><span class="tag show">Show</span> Audit trail (who / when / tool) → back to Migration Health.</p>
+    </div>
+  </div>
+
+  <div class="card accent">
+    <div class="sh" style="font-size:1rem;">Backup — if asked</div>
+    <ul>
+      <li><b>Is this AI?</b> Not for this recon — every finding is deterministic: a rule fires, then a confirming query proves it. Hybrid mode adds a Foundation-Model tier only for the hard, hand-tweaked transforms; even then the model proposes a cause + a query, and the verdict sticks only if the query confirms. Worst case → needs-review, never a wrong answer.</li>
+      <li><b>Does it scale?</b> RCA runs on the bounded recon sample, not raw volume — 500k rows here, tens of millions elsewhere, root-caused in ~90s.</li>
+      <li><b>Where do the scripts come from?</b> <span class="mono">trace_job</span> auto-discovers the building job's SQL from UC lineage; source values/types come from the recon output — no manual script-passing.</li>
+      <li><b>How is a difference classified?</b> migration-induced (fix code), genuine-data (route to owners), expected (no action), needs-review (investigate). "Actionable" = migration + genuine.</li>
+    </ul>
+  </div>
+
+  <div class="foot">ReconResolve · demo narration · pair with the app (Migration Health → Recon runs → 446d22 → fact_sales → order_ts_utc).</div>
+</div>
+</body>
+</html>

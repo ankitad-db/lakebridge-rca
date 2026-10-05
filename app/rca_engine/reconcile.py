@@ -248,13 +248,19 @@ def reconcile_pair(
     spec: TablePairSpec,
     sample_limit: int = 100,
     max_key_tries: int = 6,
+    source_catalog: str = "",
 ) -> tuple[PairResult, dict[str, list[list[tuple[str, Any]]]]]:
     """Compare one pair. Returns (PairResult, details) where details maps
-    recon_type -> list of rows (each row a list of (key, value) tuples)."""
+    recon_type -> list of rows (each row a list of (key, value) tuples).
+
+    ``source_catalog`` (optional) points the SOURCE side at a different catalog than the
+    target — e.g. a federated FOREIGN CATALOG for an external EDW (see rca_engine.connections).
+    Defaults to ``catalog`` (source and target in the same catalog)."""
     res = PairResult(source_table=spec.source_table, target_table=spec.target_table)
     details: dict[str, list[list[tuple[str, Any]]]] = {}
+    src_cat = source_catalog or catalog
 
-    src_cols = table_columns(runner, catalog, source_schema, spec.source_table)
+    src_cols = table_columns(runner, src_cat, source_schema, spec.source_table)
     tgt_cols = table_columns(runner, catalog, target_schema, spec.target_table)
     if not src_cols:
         res.status, res.message = "error", f"source table {source_schema}.{spec.source_table} not found"
@@ -263,7 +269,7 @@ def reconcile_pair(
         res.status, res.message = "error", f"target table {target_schema}.{spec.target_table} not found"
         return res, details
 
-    src_fq = _fq(catalog, source_schema, spec.source_table)
+    src_fq = _fq(src_cat, source_schema, spec.source_table)
     tgt_fq = _fq(catalog, target_schema, spec.target_table)
     colmap = {k.lower(): v.lower() for k, v in spec.column_mapping.items()}
 
@@ -275,7 +281,7 @@ def reconcile_pair(
         res.join_keys = [k.lower() for k in spec.join_keys]
         res.keys_origin = "provided"
     else:
-        keys, note = detect_join_keys(runner, catalog, source_schema, spec.source_table,
+        keys, note = detect_join_keys(runner, src_cat, source_schema, spec.source_table,
                                       list(src_cols), max_key_tries=max_key_tries)
         res.join_keys, res.keys_origin = keys, note
     if not res.join_keys:
@@ -400,15 +406,18 @@ def _next_recon_table_id(runner: QueryRunner, base: str) -> int:
 
 
 def _write_pair(runner, base, recon_id, table_id, catalog, source_schema, target_schema,
-                spec, res, details) -> None:
-    src_struct = (f"named_struct('catalog', {_sql_str(catalog)}, 'schema', {_sql_str(source_schema)}, "
+                spec, res, details, source_catalog: str = "", source_type: str = "databricks") -> None:
+    # Record the SOURCE catalog actually read (a federated foreign catalog for an external
+    # EDW, else the target catalog) so downstream RCA confirming queries resolve the source.
+    src_cat = source_catalog or catalog
+    src_struct = (f"named_struct('catalog', {_sql_str(src_cat)}, 'schema', {_sql_str(source_schema)}, "
                   f"'table_name', {_sql_str(spec.source_table)})")
     tgt_struct = (f"named_struct('catalog', {_sql_str(catalog)}, 'schema', {_sql_str(target_schema)}, "
                   f"'table_name', {_sql_str(spec.target_table)})")
     runner.query(
         f"INSERT INTO {base}.main (recon_table_id, recon_id, source_type, source_table, "
         "target_table, report_type, operation_name, start_ts, end_ts) VALUES "
-        f"({table_id}, {_sql_str(recon_id)}, 'databricks', {src_struct}, {tgt_struct}, "
+        f"({table_id}, {_sql_str(recon_id)}, {_sql_str(source_type)}, {src_struct}, {tgt_struct}, "
         "'all', 'reconcile', current_timestamp(), current_timestamp())"
     )
     cols_csv = ",".join(res.mismatch_columns)
@@ -450,10 +459,17 @@ def run_reconcile(
     sample_limit: int = 100,
     max_key_tries: int = 6,
     progress: Any = None,
+    source_catalog: str = "",
+    source_type: str = "databricks",
 ) -> ReconRunResult:
     """Reconcile each pair and persist Lakebridge-compatible rows under a new
     ``recon_id``. Per-pair failures are captured, not raised. ``progress`` is an
-    optional callable ``(done, total, PairResult)`` for UI updates."""
+    optional callable ``(done, total, PairResult)`` for UI updates.
+
+    ``source_catalog``/``source_type`` support an EXTERNAL source (e.g. a federated foreign
+    catalog for Snowflake/Oracle/…): the source side reads from ``source_catalog`` and the
+    recorded ``source_type`` reflects the real dialect. Both default to the same-catalog
+    Databricks behavior. See rca_engine.connections for resolving these from a UC connection."""
     recon_id = uuid.uuid4().hex
     base = f"{_bt(catalog)}.{_bt(recon_schema)}"
     result = ReconRunResult(recon_id=recon_id, catalog=catalog,
@@ -463,7 +479,8 @@ def run_reconcile(
     for i, spec in enumerate(specs):
         try:
             res, details = reconcile_pair(runner, catalog, source_schema, target_schema, spec,
-                                          sample_limit=sample_limit, max_key_tries=max_key_tries)
+                                          sample_limit=sample_limit, max_key_tries=max_key_tries,
+                                          source_catalog=source_catalog)
         except Exception as exc:  # never let one pair sink the run
             res = PairResult(source_table=spec.source_table, target_table=spec.target_table,
                              status="error", message=str(exc))
@@ -471,7 +488,8 @@ def run_reconcile(
         if res.status == "ok":
             try:
                 _write_pair(runner, base, recon_id, table_id, catalog, source_schema,
-                            target_schema, spec, res, details)
+                            target_schema, spec, res, details,
+                            source_catalog=source_catalog, source_type=source_type)
                 table_id += 1
             except Exception as exc:
                 res.status, res.message = "error", f"write failed: {exc}"

@@ -14,6 +14,24 @@ export function OverviewPage() {
   const [job, setJob] = useState<JobStatus | null>(null);
   const [nbDir, setNbDir] = useState<string>("");
   const poll = useRef<number | null>(null);
+  // User-configurable acceptable-mismatch threshold (%). Some migrations tolerate 1–2%
+  // difference; tables at or under this are shown as "within tolerance" rather than flagged.
+  const [threshold, setThreshold] = useState<number>(() => {
+    try { return Number(localStorage.getItem("rca-threshold")) || 0; } catch { return 0; }
+  });
+  function changeThreshold(v: number) {
+    const t = Math.max(0, Math.min(100, v || 0));
+    setThreshold(t);
+    try { localStorage.setItem("rca-threshold", String(t)); } catch { /* ignore */ }
+  }
+  // Difference rate for a table: (missing + extra + value-mismatched rows) / all distinct rows.
+  function diffPct(t: { source_count: number; missing_in_target: number; missing_in_source: number; absolute_mismatch: number }): number {
+    const total = t.source_count + t.missing_in_source;
+    const diff = t.missing_in_target + t.missing_in_source + t.absolute_mismatch;
+    return total > 0 ? (100 * diff) / total : 0;
+  }
+  const withinTol = (t: { source_count: number; missing_in_target: number; missing_in_source: number; absolute_mismatch: number; clean: boolean }) =>
+    !t.clean && threshold > 0 && diffPct(t) <= threshold;
 
   const loadView = useCallback(() => {
     setLoading(true);
@@ -188,8 +206,14 @@ export function OverviewPage() {
       {/* KPI tiles */}
       <div className="grid cards">
         <div className="card">
-          <div className="k">Overall row match</div>
+          <div className="k" title="Share of records present on both source and target (missing or extra rows lower this)">Rows matched</div>
           <div className="v">{view.overall_row_match_pct.toFixed(1)}<small>%</small></div>
+          <div className="k" style={{ marginTop: 4, opacity: 0.8 }}>records present on both sides</div>
+        </div>
+        <div className="card">
+          <div className="k" title="Number of table columns whose values differ between source and target">Columns changed</div>
+          <div className="v" style={{ color: "var(--amber)" }}>{view.columns_changed ?? 0}</div>
+          <div className="k" style={{ marginTop: 4, opacity: 0.8 }}>fields with value differences</div>
         </div>
         {(() => {
           const fs = view.findings || [];
@@ -250,7 +274,27 @@ export function OverviewPage() {
       </div>
 
       <div className="panel section">
-        <h3>Tables (worst first)</h3>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <h3 style={{ margin: 0 }}>Tables (worst first)</h3>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted)" }}>
+            Acceptable mismatch
+            <input type="number" min={0} max={100} step={0.5} value={threshold}
+              onChange={(e) => changeThreshold(parseFloat(e.target.value))}
+              style={{ width: 64, padding: "5px 8px", borderRadius: 8, border: "1px solid var(--border-2)",
+                background: "var(--panel-2)", color: "var(--text)", fontSize: 13 }} />
+            %
+            {threshold > 0 && (
+              <span className="badge v-benign" style={{ marginLeft: 6 }}>
+                {view.tables.filter((t) => withinTol(t)).length} within tolerance
+              </span>
+            )}
+          </label>
+        </div>
+        {threshold > 0 && (
+          <div className="subtitle" style={{ fontSize: 12, marginTop: 4 }}>
+            Tables with ≤ {threshold}% total difference are marked <b>within tolerance</b> (accepted — no action).
+          </div>
+        )}
         <table>
           <thead>
             <tr>
@@ -258,10 +302,8 @@ export function OverviewPage() {
               <th>Severity</th>
               <th className="num">Src rows</th>
               <th className="num">Tgt rows</th>
-              <th className="num">Missing</th>
-              <th className="num">Extra</th>
-              <th className="num">Mismatch</th>
-              <th style={{ width: 180 }}>Row match</th>
+              <th style={{ width: 150 }} title="Share of records present on both sides (100% = nothing missing or extra)">Rows matched</th>
+              <th title="The columns whose values differ between source and target">Columns changed</th>
               <th className="num">Findings</th>
             </tr>
           </thead>
@@ -273,13 +315,19 @@ export function OverviewPage() {
                     {t.name}
                   </Link>
                 </td>
-                <td>{t.max_severity ? <SeverityBadge severity={t.max_severity} /> : <span className="badge v-benign">clean</span>}</td>
+                <td>{withinTol(t)
+                  ? <span className="badge v-benign" title={`${diffPct(t).toFixed(2)}% difference ≤ ${threshold}% threshold`}>✓ within tolerance</span>
+                  : t.max_severity ? <SeverityBadge severity={t.max_severity} /> : <span className="badge v-benign">clean</span>}</td>
                 <td className="num">{t.source_count.toLocaleString()}</td>
                 <td className="num">{t.target_count.toLocaleString()}</td>
-                <td className="num">{t.missing_in_target || "·"}</td>
-                <td className="num">{t.missing_in_source || "·"}</td>
-                <td className="num">{t.absolute_mismatch || "·"}</td>
                 <td><MatchBar pct={t.row_match_pct} /></td>
+                <td style={{ fontSize: 12.5 }}>
+                  {t.diff_columns && t.diff_columns.length > 0
+                    ? <span className="mono" title={t.diff_columns.join(", ")}>
+                        {t.diff_columns.slice(0, 3).join(", ")}{t.diff_columns.length > 3 ? ` +${t.diff_columns.length - 3}` : ""}
+                      </span>
+                    : <span style={{ color: "var(--muted-2)" }}>·</span>}
+                </td>
                 <td className="num">{t.findings_count}</td>
               </tr>
             ))}
