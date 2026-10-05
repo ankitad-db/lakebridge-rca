@@ -40,11 +40,10 @@ const STAGES: Stage[] = [
       { n: "recon_id + main / metrics / details", s: "Lakebridge-compatible Delta", mono: true },
     ],
     detail: {
-      does: "Compares each source↔target pair and writes Lakebridge-compatible main/metrics/details under a fresh recon_id. Join keys are auto-detected when not supplied; each pair is isolated so one failure never sinks the run.",
-      inputs: ["Table pairs (source & target schema)"],
+      does: "Lakebridge reconcile compares each source↔target pair and writes main/metrics/details under a recon_id. This is Lakebridge's step — ReconResolve consumes its output; it does not re-implement reconcile.",
+      inputs: ["Source & target tables"],
       outputs: ["recon_id", "main / metrics / details (Delta)"],
-      runs: "App-native on the SQL warehouse, or Lakebridge reconcile.",
-      link: { to: "/trigger", label: "⚡ Trigger a reconcile" },
+      runs: "Lakebridge reconcile (databricks labs lakebridge reconcile).",
     },
   },
   {
@@ -80,7 +79,7 @@ const STAGES: Stage[] = [
   {
     id: "outputs", accent: "green", ic: "🎯", lbl: "Outputs", step: "result",
     nodes: [
-      { n: "Verdicts", s: "🔧 migration · 📊 data · ✅ benign · 🔍 review" },
+      { n: "Verdicts", s: "🔧 migration · 📊 data · ✅ expected · 🔍 review" },
       { n: "📊 Run dashboard", s: "match %, severity, scorecard" },
       { n: "📓 Notebooks", s: "per-table + index, runnable in workspace" },
       { n: "🧾 Audit trail", s: "append-only Delta history" },
@@ -190,7 +189,7 @@ const DETAIL_STEPS: FlowStep[] = [
     id: "d-mismatch", kind: "decision", label: "Any mismatches in details?",
     files: ["rca_engine/ingest.py"],
     branches: [
-      { cond: "NO", to: "Table clean ✅ 100% match → report as benign / clean", tone: "yes" },
+      { cond: "NO", to: "Table clean ✅ 100% match → report as clean", tone: "yes" },
       { cond: "YES", to: "Ingest findings → run RCA (step 5)", tone: "no" },
     ],
   },
@@ -221,7 +220,7 @@ const DETAIL_STEPS: FlowStep[] = [
     id: "d-confirm", kind: "decision", label: "Does the query confirm the hypothesis?",
     files: ["rca_engine/drilldown.py", "rca_engine/severity.py"],
     branches: [
-      { cond: "YES", to: "Verdict confirmed → 🔧 migration / 📊 genuine / ✅ benign", tone: "yes" },
+      { cond: "YES", to: "Verdict confirmed → 🔧 migration / 📊 genuine / ✅ expected", tone: "yes" },
       { cond: "NO", to: "Stays 🔍 needs_review", tone: "no" },
     ],
   },
@@ -266,11 +265,21 @@ const DETAIL_STEPS: FlowStep[] = [
     branches: [
       { cond: "🔧 migration-induced", to: "Fix transpiled SQL / mapping → re-run reconcile (loop to step 1)", tone: "loop" },
       { cond: "📊 genuine data", to: "Route to the data owners", tone: "route" },
-      { cond: "✅ benign", to: "Accept — expected difference", tone: "route" },
+      { cond: "✅ expected", to: "Accept — expected difference, no action", tone: "route" },
       { cond: "🔍 needs review", to: "Manual follow-up using the recorded next-check", tone: "route" },
     ],
   },
   { id: "end", kind: "terminal", label: "Done · every mismatch has a cause, a fix, and an owner", ic: "■" },
+];
+
+/* The APP journey — how a user moves through the tabs (navigate), distinct from the
+   engine pipeline diagram below (how RCA works internally). Each step links to its tab. */
+const JOURNEY: { verb: string; tab: string; d: string; to: string }[] = [
+  { verb: "Understand", tab: "Overview", d: "What ReconResolve does & how it works", to: "/" },
+  { verb: "Assess", tab: "Migration Health", d: "Verdict mix & top causes across every recon", to: "/portfolio" },
+  { verb: "Pick a recon", tab: "Recon runs", d: "Choose a Lakebridge recon_id to root-cause", to: "/runs" },
+  { verb: "Investigate", tab: "Run dashboard", d: "Root cause, fix & owner per finding", to: "/runs" },
+  { verb: "Track", tab: "Audit trail", d: "Every RCA run — who, when, outcome", to: "/audit" },
 ];
 
 export function HomePage({ config }: { config: AppConfig | null }) {
@@ -287,46 +296,74 @@ export function HomePage({ config }: { config: AppConfig | null }) {
   return (
     <>
       <div className="hero">
-        <div className="eyebrow">Lakebridge migration · reconcile → resolve</div>
-        <h1>From reconciliation mismatch to confident root cause — automatically.</h1>
-        <p>
-          <b>ReconResolve</b> is the stage <i>after</i> Lakebridge reconcile. It works for{" "}
-          <b>any Lakebridge-supported source</b> migrating to Databricks — Snowflake, Oracle,
-          Teradata, SQL Server, Synapse and more. A <b>deterministic</b> pass classifies every
-          mismatch and confirms it with a live query; a <b>Genie Code / Foundation Model fallback</b>{" "}
-          traces the leftovers back through the transpiled SQL &amp; lineage — still query-confirmed.
-          Each finding lands as <b>migration-induced</b>, <b>genuine data</b>, <b>benign</b>, or{" "}
-          <b>needs review</b> — with the fix, the owner, and a full audit trail.
-        </p>
-        <div className="cta">
-          <button className="btn primary" onClick={() => nav("/trigger")}>⚡ Trigger a reconcile</button>
-          <button className="btn" onClick={() => nav("/runs")}>📥 Browse recon runs</button>
-          <button className="btn" onClick={() => nav("/audit")}>🧾 Audit trail</button>
+        <div className="hero-copy">
+          <div className="eyebrow">Lakebridge migration · reconcile → resolve</div>
+          <h1>From reconciliation mismatch to confident root cause — automatically.</h1>
+          <p>
+            <b>ReconResolve</b> is the stage <i>after</i> Lakebridge reconcile. It works for{" "}
+            <b>any Lakebridge-supported source</b> migrating to Databricks — Snowflake, Oracle,
+            Teradata, SQL Server, Synapse and more. A <b>deterministic</b> pass classifies every
+            mismatch and confirms it with a live query; a <b>Genie Code / Foundation Model fallback</b>{" "}
+            traces the leftovers back through the transpiled SQL &amp; lineage — still query-confirmed.
+            Each finding lands as <b>migration-induced</b>, <b>genuine data</b>, <b>expected</b>, or{" "}
+            <b>needs review</b> — with the fix, the owner, and a full audit trail.
+          </p>
+          <div className="cta">
+            <button className="btn primary" onClick={() => nav("/runs")}>📥 Root-cause a recon_id</button>
+            <button className="btn" onClick={() => nav("/portfolio")}>🩺 Migration Health</button>
+            <button className="btn" onClick={() => nav("/audit")}>🧾 Audit trail</button>
+          </div>
+          <div className="src">
+            {demo ? "Demo mode · bundled sample data" : <>Active source: <span className="mono">{catalog}.{config?.recon_schema}</span> · dialect {config?.dialect}</>}
+          </div>
         </div>
-        <div className="src">
-          {demo ? "Demo mode · bundled sample data" : <>Active source: <span className="mono">{catalog}.{config?.recon_schema}</span> · dialect {config?.dialect}</>}
+        <div className="hero-outcomes">
+          <div className="hk">Every finding lands as one of</div>
+          <div className="oc"><span className="odot" style={{ background: "var(--lava)" }} /><div><div className="ot">🔧 Migration-induced</div><div className="od">A transpile/mapping defect — comes with the fix &amp; owner.</div></div></div>
+          <div className="oc"><span className="odot" style={{ background: "var(--blue)" }} /><div><div className="ot">📊 Genuine data</div><div className="od">A real source-vs-target data difference — routed to data owners.</div></div></div>
+          <div className="oc"><span className="odot" style={{ background: "var(--green)" }} /><div><div className="ot">✅ Expected — no action</div><div className="od">Within tolerance / expected difference — nothing to fix.</div></div></div>
+          <div className="oc"><span className="odot" style={{ background: "var(--amber)" }} /><div><div className="ot">🔍 Needs review</div><div className="od">Not query-confirmed — carries the exact next check.</div></div></div>
         </div>
       </div>
 
-      {/* Two ways in */}
+      {/* How you'll use it — the app journey (navigate the tabs). Distinct from the
+          engine pipeline diagram further down (how RCA works internally). */}
+      <div className="journey">
+        <div className="jhead">How you'll use ReconResolve</div>
+        <div className="jsteps">
+          {JOURNEY.map((s, i) => (
+            <Fragment key={s.verb}>
+              {i > 0 && <span className="jarrow">→</span>}
+              <button className="jstep" onClick={() => nav(s.to)} title={`Go to ${s.tab}`}>
+                <span className="jn">{i + 1}</span>
+                <span className="jt">{s.verb}</span>
+                <span className="jtab">{s.tab}</span>
+                <span className="jd">{s.d}</span>
+              </button>
+            </Fragment>
+          ))}
+        </div>
+      </div>
+
+      {/* How it starts */}
       <div className="paths">
         <div className="path">
           <div className="num">1</div>
           <div>
-            <div className="t">Start from tables</div>
+            <div className="t">Lakebridge reconciles</div>
             <div className="d">
-              Point at a source &amp; target schema, pick table pairs — join keys are auto-detected —
-              and ReconResolve reconciles them into a fresh <span className="mono">recon_id</span>, then runs RCA.
+              Lakebridge <span className="mono">reconcile</span> compares source vs. target and writes a{" "}
+              <span className="mono">recon_id</span> — the mature, dedicated step ReconResolve builds on.
             </div>
           </div>
         </div>
         <div className="path blue">
           <div className="num">2</div>
           <div>
-            <div className="t">Start from a recon_id</div>
+            <div className="t">ReconResolve root-causes it</div>
             <div className="d">
-              Already ran Lakebridge <span className="mono">reconcile</span>? Drop the{" "}
-              <span className="mono">recon_id</span> in and jump straight to RCA — reconcile step skipped.
+              Drop the <span className="mono">recon_id</span> in (or pick it from Recon runs) and ReconResolve
+              explains every difference — verdict, fix, owner — query-confirmed.
             </div>
           </div>
         </div>

@@ -25,6 +25,16 @@ class Settings:
     notebook_dir: str = ""         # workspace folder to publish generated RCA notebooks into
     source_schema: str = ""        # default source schema for the trigger-recon form
     target_schema: str = ""        # default target schema for the trigger-recon form
+    # External source connectivity (untested — no external sandbox). When the source is a
+    # NON-Databricks EDW, reach it via Unity Catalog Lakehouse Federation: a UC connection
+    # exposed as a foreign catalog, then queryable like any UC table. See rca_engine.connections.
+    source_catalog: str = ""       # federated FOREIGN CATALOG for the source (blank = same catalog as target)
+    source_connection: str = ""    # UC CONNECTION name; used to create the foreign catalog on demand
+    # Real Lakebridge reconcile: trigger the deployed LAKEBRIDGE_Reconciliation_Runner job
+    # (databricks_labs_lakebridge `reconcile` entry point) instead of the app-native reconcile.
+    use_lakebridge_recon: bool = False
+    lakebridge_job_id: str = ""            # the deployed Lakebridge reconcile job id
+    lakebridge_install_folder: str = ""    # workspace .lakebridge folder (reconcile.yml + recon configs)
     audit_table: str = ""          # fully-qualified Delta table for the pipeline audit trail
     llm_fallback: bool = False     # Tier-2: resolve residual findings via the Foundation Model API
     llm_endpoint: str = ""         # FM serving endpoint used for the Tier-2 fallback
@@ -36,12 +46,21 @@ class Settings:
     # UC lineage: depth-agnostic upstream trace-back + downstream blast radius (system.access.*).
     use_lineage: bool = True
     max_lineage_hops: int = 10
+    # Code-aware TARGET transform: auto-discover the building job's SQL from system.access.
+    # table_lineage (no scripts to pass). Falls back to transpiled_output_dir when no job.
+    trace_job: bool = True
     use_skill_job: bool = False    # invoke the Genie Code skill as a Databricks Job (vs in-process)
     skill_notebook: str = ""       # workspace path of the deployed skill's job_entry notebook
     skill_dir: str = ""            # workspace folder of the deployed skill (contains scripts/, config.yml)
     skill_out_dir: str = ""        # workspace base the skill job writes rca_<id>/ bundles into
     profile: str = ""              # local CLI profile (ignored in-app)
     allow_ondemand: bool = False   # allow the app to run analyze() live (P2); off by default
+    # Validation-tool-agnostic ingest. "lakebridge" (default) reads reconcile main/metrics/
+    # details; "avf" reads the Auto Validation Framework avf_* report tables. Switching tools
+    # changes only ingest — the engine, bundles, and UI are identical.
+    validation_tool: str = "lakebridge"
+    avf_reports_schema: str = ""   # catalog.schema of the avf_* tables (blank => recon_catalog.recon_schema)
+    avf_consume_rca: bool = True   # fold AVF's own row-count RCA in as evidence on volume findings
 
     @property
     def has_warehouse(self) -> bool:
@@ -91,6 +110,11 @@ def load_settings() -> Settings:
         notebook_dir=os.environ.get("RCA_NOTEBOOK_DIR", ""),
         source_schema=os.environ.get("RCA_SOURCE_SCHEMA", ""),
         target_schema=os.environ.get("RCA_TARGET_SCHEMA", ""),
+        source_catalog=os.environ.get("RCA_SOURCE_CATALOG", ""),
+        source_connection=os.environ.get("RCA_SOURCE_CONNECTION", ""),
+        use_lakebridge_recon=os.environ.get("RCA_USE_LAKEBRIDGE_RECON", "").lower() in ("1", "true", "yes"),
+        lakebridge_job_id=os.environ.get("RCA_LAKEBRIDGE_JOB_ID", ""),
+        lakebridge_install_folder=os.environ.get("RCA_LAKEBRIDGE_INSTALL_FOLDER", ""),
         audit_table=_resolve_audit_table(recon_catalog, recon_schema),
         llm_fallback=os.environ.get("RCA_LLM_FALLBACK", "").lower() in ("1", "true", "yes"),
         llm_endpoint=os.environ.get("RCA_LLM_ENDPOINT", "databricks-claude-opus-5"),
@@ -99,12 +123,16 @@ def load_settings() -> Settings:
         source_scripts_dir=os.environ.get("RCA_SOURCE_SCRIPTS_DIR", ""),
         use_lineage=os.environ.get("RCA_USE_LINEAGE", "true").lower() in ("1", "true", "yes"),
         max_lineage_hops=int(os.environ.get("RCA_MAX_LINEAGE_HOPS", "10") or 10),
+        trace_job=os.environ.get("RCA_TRACE_JOB", "true").lower() in ("1", "true", "yes"),
         use_skill_job=os.environ.get("RCA_USE_SKILL_JOB", "").lower() in ("1", "true", "yes"),
         skill_notebook=os.environ.get("RCA_SKILL_NOTEBOOK", ""),
         skill_dir=os.environ.get("RCA_SKILL_DIR", ""),
         skill_out_dir=os.environ.get("RCA_SKILL_OUT_DIR", ""),
         profile=os.environ.get("DATABRICKS_PROFILE", ""),
         allow_ondemand=os.environ.get("RCA_ALLOW_ONDEMAND", "").lower() in ("1", "true", "yes"),
+        validation_tool=os.environ.get("RCA_VALIDATION_TOOL", "lakebridge").lower() or "lakebridge",
+        avf_reports_schema=os.environ.get("RCA_AVF_REPORTS_SCHEMA", ""),
+        avf_consume_rca=os.environ.get("RCA_AVF_CONSUME_RCA", "true").lower() in ("1", "true", "yes"),
     )
 
 

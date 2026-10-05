@@ -174,6 +174,14 @@ def run_llm_fallback(
         print(f"[llm_fallback] could not build workspace client: {exc}")
         return 0
 
+    # Category-specific remediation for any finding the model promotes, so the resulting top
+    # hypothesis carries an actionable fix (not the generic "computed column / audit" fallback).
+    try:
+        from rca_engine.classify import load_kb
+        _kb = load_kb(dialect or "snowflake")
+    except Exception:
+        _kb = None
+
     if verbose:
         print(f"[llm_fallback] {len(residuals)} residual finding(s) -> asking {endpoint} ...")
     promoted = 0
@@ -195,6 +203,7 @@ def run_llm_fallback(
                 category=category,
                 verdict=proposal.get("verdict"),
                 rationale=(proposal.get("rationale") or "LLM fallback hypothesis")[:2000],
+                remediation=(_kb.remediation_for(category) if _kb else "") or "",
                 confirm_query=confirm_query,
                 # a reconstruction that matches every row is strong proof — rank it above
                 # the deterministic guess (which can also sit at 0.85) so it becomes top.

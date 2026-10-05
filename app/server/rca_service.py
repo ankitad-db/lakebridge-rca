@@ -24,7 +24,7 @@ from .config import Settings, get_workspace_client, get_workspace_host
 _VERDICT_META = {
     "migration_induced": {"icon": "🔧", "label": "Migration-induced", "action": "Fix in the migration"},
     "genuine_data": {"icon": "📊", "label": "Genuine data difference", "action": "Route to the data owner"},
-    "benign": {"icon": "✅", "label": "Benign / expected", "action": "No action"},
+    "benign": {"icon": "✅", "label": "Expected — no action", "action": "No action"},
     "needs_review": {"icon": "🔍", "label": "Needs review", "action": "Investigate further"},
 }
 
@@ -91,6 +91,19 @@ def _mapping(settings: Settings):
                                  settings.source_scripts_dir or "", settings.dialect)
 
 
+def _build_source(settings: Settings, recon_id: str):
+    """Validation-tool-agnostic ingest source for one run. ``avf`` reads the avf_* report
+    tables for ``recon_id`` (the AVF run_id); the default ``lakebridge`` returns ``None`` so
+    ``analyze()`` uses its unchanged reconcile path. Keeping Lakebridge on ``None`` guarantees
+    that path is byte-for-byte as before."""
+    if (settings.validation_tool or "lakebridge").lower() != "avf":
+        return None
+    from rca_engine.sources import AVFSource
+
+    rs = settings.avf_reports_schema or f"{settings.recon_catalog}.{settings.recon_schema}"
+    return AVFSource(run_id=recon_id, reports_schema=rs, consume_rca=settings.avf_consume_rca)
+
+
 def _maybe_llm_fallback(settings: Settings, result: RcaResult, runner) -> int:
     """Tier-2: resolve residual findings via the Foundation Model API (best-effort).
     Returns the number of findings promoted. No-op unless ``RCA_LLM_FALLBACK`` is on."""
@@ -99,7 +112,8 @@ def _maybe_llm_fallback(settings: Settings, result: RcaResult, runner) -> int:
     try:
         from .llm_fallback import run_llm_fallback
 
-        n = run_llm_fallback(result, runner, settings.llm_endpoint, dialect=settings.dialect,
+        # Use the result's dialect (AVF auto-detects it from source_dialect; Lakebridge = configured).
+        n = run_llm_fallback(result, runner, settings.llm_endpoint, dialect=result.dialect,
                              mapping=_mapping(settings))
         if n:
             print(f"[rca] LLM fallback resolved {n} residual finding(s) for {result.recon_id}")
@@ -122,17 +136,231 @@ def list_audit(settings: Settings, limit: int = 50) -> list[dict[str, Any]]:
     return rows
 
 
+# Human labels for the root-cause categories surfaced in the portfolio "top causes".
+_CATEGORY_LABEL = {
+    "type_precision": "Precision / scale", "timezone": "Timezone", "string_format": "String format",
+    "null_boolean": "Null / boolean", "transpilation": "Transpilation logic",
+    "volume_missing": "Missing rows", "volume_extra": "Extra rows", "upstream_drift": "Upstream drift",
+    "semi_structured": "Semi-structured", "schema": "Schema / type", "env_config": "Env / config",
+    "unknown": "Unclassified",
+}
+
+
+# --------------------------------------------------------------------------- #
+# Read-through cache for the two heavy read endpoints (Migration Health rolls up
+# every bundle; Recon runs does a live warehouse query). The recon inventory + the
+# bundle set are static between RCA runs, so a TTL cache keeps the UI snappy. Any
+# bundle write (a fresh/re-run RCA) calls clear_view_cache() so results stay correct.
+# --------------------------------------------------------------------------- #
+_VIEW_CACHE: dict[str, tuple[float, Any]] = {}
+_VIEW_CACHE_TTL = 1800.0  # 30 min
+
+
+def _cache_get(key: str):
+    hit = _VIEW_CACHE.get(key)
+    if hit is not None and (time.time() - hit[0]) < _VIEW_CACHE_TTL:
+        return hit[1]
+    return None
+
+
+def _cache_put(key: str, val):
+    _VIEW_CACHE[key] = (time.time(), val)
+
+
+def clear_view_cache(recon_id: str | None = None) -> None:
+    """Invalidate cached reads after a bundle write. With a recon_id, drop just that recon's
+    dashboard view + the portfolio roll-up (which aggregates it) and KEEP the recon-list cache
+    warm (the list is stable across a re-run) so the UI stays snappy mid-demo. No arg clears all."""
+    if recon_id is None:
+        _VIEW_CACHE.clear()
+        return
+    for k in list(_VIEW_CACHE):
+        if k.startswith("portfolio:") or k.endswith(f":{recon_id}"):
+            _VIEW_CACHE.pop(k, None)
+
+
+def portfolio_summary(settings: Settings) -> dict[str, Any]:
+    ck = f"portfolio:{settings.recon_catalog}:{settings.recon_schema}:{settings.bundles_dir}"
+    cached = _cache_get(ck)
+    if cached is not None:
+        return cached
+    val = _portfolio_summary_uncached(settings)
+    _cache_put(ck, val)
+    return val
+
+
+def _portfolio_summary_uncached(settings: Settings) -> dict[str, Any]:
+    """Migration-wide roll-up ACROSS every recon (vs. the per-recon dashboards): run
+    inventory + verdict mix + top recurring root causes, aggregated from the recon
+    inventory and each recon's saved RCA bundle. Read-only; degrades gracefully when a
+    recon has no bundle yet (counted in inventory, omitted from the verdict/cause mix)."""
+    runs = list_runs(settings)
+    bundle_ids = _bundles_on_disk(settings)
+
+    verdict_counts: dict[str, int] = {k: 0 for k in _VERDICT_META}
+    cause_counts: dict[str, int] = {}
+    findings_total = 0
+    with_rca = 0
+    per_recon: list[dict[str, Any]] = []
+
+    def _process(row: dict[str, Any]) -> dict[str, Any]:
+        """Load a recon's saved bundle (if any) and fold its verdicts/causes into the
+        aggregates + the row. Cheap — reads the pre-computed bundle, never a live run."""
+        nonlocal findings_total, with_rca
+        recon_id = row["recon_id"]
+        if recon_id and os.path.exists(_bundle_json_path(settings, recon_id)):
+            try:
+                result = load_result(settings, recon_id)
+            except Exception:
+                result = None
+            if result is not None:
+                with_rca += 1
+                rv: dict[str, int] = {}
+                mode = "deterministic"
+                for f in result.findings:
+                    h = f.top_hypothesis
+                    # Mode: hybrid if the agentic Tier-2 was engaged (an LLM-fallback attempt
+                    # or an llm_drilldown evidence item), else deterministic Tier-1 only.
+                    if "llm_fallback" in (f.metadata or {}):
+                        mode = "hybrid"
+                    if h is None:
+                        continue
+                    if any(e.label == "llm_drilldown" for e in h.evidence):
+                        mode = "hybrid"
+                    findings_total += 1
+                    verdict_counts[h.verdict.value] = verdict_counts.get(h.verdict.value, 0) + 1
+                    rv[h.verdict.value] = rv.get(h.verdict.value, 0) + 1
+                    cause_counts[h.category.value] = cause_counts.get(h.category.value, 0) + 1
+                row["findings"] = sum(rv.values())
+                row["verdicts"] = rv
+                row["has_bundle"] = True
+                row["mode"] = mode
+                if not row["table_pairs"]:
+                    row["table_pairs"] = len(result.table_summaries)
+        return row
+
+    # 1) Recons from the inventory (warehouse `main`, or on-disk bundles when offline).
+    seen: set[str] = set()
+    for r in runs:
+        recon_id = r.get("recon_id")
+        seen.add(recon_id)
+        per_recon.append(_process({
+            "recon_id": recon_id,
+            "started": str(r.get("started")) if r.get("started") is not None else None,
+            "table_pairs": int(r.get("table_pairs") or 0),
+            "tables_with_diffs": int(r.get("tables_with_diffs") or 0),
+            "clean": bool(r.get("clean")),
+            "has_bundle": bool(r.get("has_bundle")) or recon_id in bundle_ids,
+            "findings": 0,
+            "verdicts": {},
+            "mode": "",
+        }))
+
+    # 2) Recons that have a saved RCA bundle but aren't in the inventory query — so RCA'd
+    #    runs always drive the verdict mix + causes, even when live discovery is limited.
+    for recon_id in sorted(bundle_ids - seen):
+        meta = _bundle_meta(settings, recon_id)
+        per_recon.append(_process({
+            "recon_id": recon_id, "started": meta.get("started"), "table_pairs": 0,
+            "tables_with_diffs": 0, "clean": False, "has_bundle": True,
+            "findings": 0, "verdicts": {}, "mode": "",
+        }))
+
+    # Richest (most findings) first so the story leads with the root-caused runs.
+    per_recon.sort(key=lambda r: (r["findings"], r["started"] or ""), reverse=True)
+
+    recons = len(per_recon)
+    table_pairs = sum(int(r["table_pairs"]) for r in per_recon)
+    tables_with_diffs = sum(int(r["tables_with_diffs"]) for r in per_recon)
+    tables_clean = max(table_pairs - tables_with_diffs, 0)
+
+    top_causes = sorted(cause_counts.items(), key=lambda kv: kv[1], reverse=True)
+    top_causes = [
+        {"category": c, "label": _CATEGORY_LABEL.get(c, c), "count": n}
+        for c, n in top_causes[:8]
+    ]
+
+    actionable = verdict_counts.get("migration_induced", 0) + verdict_counts.get("genuine_data", 0)
+    return {
+        "recons": recons,
+        "with_rca": with_rca,
+        "table_pairs": table_pairs,
+        "tables_clean": tables_clean,
+        "tables_with_diffs": tables_with_diffs,
+        "findings_total": findings_total,
+        "actionable": actionable,
+        "verdict_counts": verdict_counts,
+        "verdict_meta": _VERDICT_META,
+        "top_causes": top_causes,
+        "runs": per_recon,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Discovery
 # --------------------------------------------------------------------------- #
 def list_runs(settings: Settings) -> list[dict[str, Any]]:
-    """Recent recon runs from the warehouse; falls back to on-disk bundles."""
+    ck = f"runs:{settings.recon_catalog}:{settings.recon_schema}:{settings.bundles_dir}"
+    cached = _cache_get(ck)
+    if cached is not None:
+        return cached
+    val = _list_runs_uncached(settings)
+    _cache_put(ck, val)
+    return val
+
+
+def run_view(settings: Settings, recon_id: str) -> Optional[dict[str, Any]]:
+    """Cached run dashboard: load the bundle + build the view once, then serve from cache
+    until a re-run clears it. Returns None when there is no bundle for the recon."""
+    ck = f"view:{settings.bundles_dir}:{recon_id}"
+    cached = _cache_get(ck)
+    if cached is not None:
+        return cached
+    result = load_result(settings, recon_id)
+    if result is None:
+        return None
+    val = build_view(result)
+    _cache_put(ck, val)
+    return val
+
+
+def _list_avf_runs(settings: Settings, runner) -> list[dict[str, Any]]:
+    """Recent AVF runs from avf_validation_summary (one row per entity -> grouped by run_id),
+    shaped like list_recon_runs so Migration Health / Recon runs render identically."""
+    rs = settings.avf_reports_schema or f"{settings.recon_catalog}.{settings.recon_schema}"
+    rows = runner.query(
+        "SELECT run_id, min(validation_start_time) AS started, max(validation_end_time) AS ended, "
+        "count(*) AS table_pairs, "
+        "count_if(upper(overall_status) = 'FAIL') AS tables_with_diffs "
+        f"FROM {rs}.avf_validation_summary GROUP BY run_id ORDER BY started DESC LIMIT 200"
+    )
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        rid = r.get("run_id")
+        if not rid:
+            continue
+        try:
+            pairs = int(r.get("table_pairs") or 0)
+            diffs = int(r.get("tables_with_diffs") or 0)
+        except (TypeError, ValueError):
+            pairs, diffs = 0, 0
+        out.append({"recon_id": rid, "started": r.get("started"), "ended": r.get("ended"),
+                    "table_pairs": pairs, "tables_with_diffs": diffs,
+                    "clean": diffs == 0 and pairs > 0})
+    return out
+
+
+def _list_runs_uncached(settings: Settings) -> list[dict[str, Any]]:
+    """Recent runs from the warehouse (Lakebridge recon or AVF, per validation_tool); falls
+    back to on-disk bundles."""
     runner = _runner(settings)
     if runner is not None and settings.recon_catalog:
         try:
-            from rca_engine.discovery import list_recon_runs
-
-            runs = list_recon_runs(runner, settings.recon_catalog, settings.recon_schema)
+            if (settings.validation_tool or "lakebridge").lower() == "avf":
+                runs = _list_avf_runs(settings, runner)
+            else:
+                from rca_engine.discovery import list_recon_runs
+                runs = list_recon_runs(runner, settings.recon_catalog, settings.recon_schema)
             known = _bundles_on_disk(settings)
             for r in runs:
                 r["has_bundle"] = r["recon_id"] in known
@@ -142,21 +370,21 @@ def list_runs(settings: Settings) -> list[dict[str, Any]]:
     return _runs_from_bundles(settings)
 
 
+#: The source systems Lakebridge RECONCILE supports, per
+#: https://databrickslabs.github.io/lakebridge/docs/reconcile/#supported-source-systems
+#: (Oracle, Snowflake, SQL Server=mssql, Redshift, Teradata, BigQuery, Databricks).
+#: These are the dialect ids the engine/sqlglot use; "mssql" is Microsoft SQL Server.
+LAKEBRIDGE_DIALECTS = [
+    "databricks", "snowflake", "oracle", "mssql", "redshift", "teradata", "bigquery",
+]
+
+
 def list_dialects(settings: Settings) -> list[str]:
-    """Source dialects with a knowledge base (from rca_engine/knowledge/*.yaml). These
-    are the Lakebridge-supported sources the RCA has curated semantics for. The
-    configured default is floated to the top."""
-    import glob
-
-    import rca_engine.knowledge as kb_pkg
-
-    kb_dir = os.path.dirname(os.path.abspath(kb_pkg.__file__))
-    found = sorted(
-        os.path.splitext(os.path.basename(p))[0]
-        for p in glob.glob(os.path.join(kb_dir, "*.yaml"))
-    )
+    """Exactly the Lakebridge reconcile source systems (for the UI dialect picker), with the
+    configured default floated to the top. Kept in lockstep with the Lakebridge reconcile docs."""
     default = settings.dialect
-    return ([default] if default in found else []) + [d for d in found if d != default] or found
+    return ([default] if default in LAKEBRIDGE_DIALECTS else []) + \
+        [d for d in LAKEBRIDGE_DIALECTS if d != default]
 
 
 def list_catalogs(settings: Settings) -> list[str]:
@@ -275,7 +503,8 @@ def load_result(settings: Settings, recon_id: str) -> Optional[RcaResult]:
         return analyze(_runner(settings), recon_id, settings.recon_catalog,
                        settings.recon_schema, dialect=settings.dialect, drilldown=True,
                        mapping=_mapping(settings), use_lineage=settings.use_lineage,
-                       max_lineage_hops=settings.max_lineage_hops)
+                       max_lineage_hops=settings.max_lineage_hops, trace_job=settings.trace_job,
+                       source=_build_source(settings, recon_id))
     return None
 
 
@@ -342,13 +571,57 @@ def _short(t: str) -> str:
     return t.split(".")[-1] if t else t
 
 
-def _finding_view(f: Finding) -> dict[str, Any]:
+def _qual(t: str) -> str:
+    """Schema-qualified table name (last two segments), so a source table (mig_rev_src.fact_sales)
+    is visibly distinct from the same-named target (mig_rev_tgt.fact_sales)."""
+    return ".".join([p for p in (t or "").split(".") if p][-2:])
+
+
+def _finding_view(f: Finding, dialect: str = "") -> dict[str, Any]:
     h = f.top_hypothesis
     loc = _short(f.target_table) + (f".{f.column}" if f.column else "")
-    confirmed = bool(h and any((e.data or {}).get("confirmed") for e in h.evidence if isinstance(e.data, dict)))
+    # Merge evidence so the finding stays COHERENT with the winning verdict:
+    #  - the TOP hypothesis contributes all its evidence;
+    #  - other (rejected) hypotheses contribute ONLY factual, verdict-agnostic enrichment
+    #    (transform logic, script location, lineage, suggested fix) — NOT their interpretive
+    #    evidence (probe/drilldown/drift), which can contradict the top verdict (e.g. a losing
+    #    "rounding" or "genuine-data" reading on a finding the agentic tier proved is transpilation).
+    _FACTUAL = {"code", "code_generated", "lineage", "fix"}
+    ordered = ([h] + [x for x in f.hypotheses if x is not h]) if h else list(f.hypotheses)
+    seen: set[tuple] = set()
+    evidence: list[dict[str, Any]] = []
+    confirmed = False
+    for i, hyp in enumerate(ordered):
+        for e in hyp.evidence:
+            if i > 0 and e.label not in _FACTUAL:
+                continue
+            if isinstance(e.data, dict) and e.data.get("confirmed"):
+                confirmed = True
+            key = (e.label, e.detail)
+            if key in seen:
+                continue
+            seen.add(key)
+            evidence.append({"label": e.label, "detail": e.detail, "query": e.query})
+    # Remediation: prefer the top hypothesis's; else the concrete suggested-fix title (the
+    # actionable one); else a same-category remediation; else any. This avoids surfacing a
+    # rejected hypothesis's generic "it can never match source / audit column" text on a
+    # finding the verdict says is a fixable transform defect.
+    remediation = (h.remediation if h else "")
+    if not remediation:
+        fx = next((x.fix for x in f.hypotheses if getattr(x, "fix", None)), None)
+        remediation = (getattr(fx, "title", "") if fx else "")
+    if not remediation and h:
+        remediation = next((x.remediation for x in f.hypotheses
+                            if x.remediation and x.category == h.category), "")
+    if not remediation:
+        remediation = next((x.remediation for x in f.hypotheses if x.remediation), "")
     return {
         "location": loc,
         "table": _short(f.target_table),
+        "source_table": _short(f.source_table),
+        "source_ref": _qual(f.source_table),
+        "target_ref": _qual(f.target_table),
+        "dialect": dialect,
         "column": f.column,
         "recon_type": f.recon_type.value,
         "mismatch_count": f.mismatch_count,
@@ -362,10 +635,9 @@ def _finding_view(f: Finding) -> dict[str, Any]:
         "severity": severity_label(f),
         "severity_score": severity_score(f),
         "rationale": h.rationale if h else "",
-        "remediation": h.remediation if h else "",
+        "remediation": remediation,
         "owner": h.recommended_owner if h else "",
-        "evidence": [{"label": e.label, "detail": e.detail, "query": e.query}
-                     for e in (h.evidence if h else [])],
+        "evidence": evidence,
         "samples": [{"keys": s.keys, "source": s.source_value, "target": s.target_value}
                     for s in f.samples[:8]],
     }
@@ -436,7 +708,8 @@ def run_analysis(settings: Settings, recon_id: str, only_table: str) -> RcaResul
         scoped = analyze(runner, recon_id, settings.recon_catalog, settings.recon_schema,
                          dialect=settings.dialect, drilldown=True, only_table=only_table,
                          mapping=_mapping(settings), use_lineage=settings.use_lineage,
-                         max_lineage_hops=settings.max_lineage_hops)
+                         max_lineage_hops=settings.max_lineage_hops, trace_job=settings.trace_job,
+                         source=_build_source(settings, recon_id))
         _maybe_llm_fallback(settings, scoped, runner)
         _merge_into_bundle(settings, recon_id, scoped)
         return scoped
@@ -474,6 +747,7 @@ def _merge_into_bundle(settings: Settings, recon_id: str, scoped: RcaResult) -> 
                        findings=findings, table_summaries=summaries)
     try:
         write_rca_bundle(merged, settings.bundles_dir, recon_id, combined=False)
+        clear_view_cache(recon_id)  # a re-run changed the bundles → refresh Migration Health / Recon runs
     except Exception as exc:  # persistence is best-effort; the view is still returned
         print(f"[rca] could not persist bundle for {recon_id}: {exc}")
 
@@ -506,7 +780,7 @@ def build_table_view(result: RcaResult, table: str) -> dict[str, Any]:
             "schema_ok": summary.schema_ok,
         },
         "clean": len(findings) == 0,
-        "findings": [_finding_view(f) for f in findings],
+        "findings": [_finding_view(f, result.dialect) for f in findings],
     }
 
 
@@ -674,10 +948,12 @@ def _analyze_publish(settings: Settings, recon_id: str, drilldown: bool,
     result = analyze(runner, recon_id, settings.recon_catalog,
                      settings.recon_schema, dialect=settings.dialect, drilldown=drilldown,
                      mapping=_mapping(settings), use_lineage=settings.use_lineage,
-                     max_lineage_hops=settings.max_lineage_hops)
+                     max_lineage_hops=settings.max_lineage_hops, trace_job=settings.trace_job,
+                     source=_build_source(settings, recon_id))
     _maybe_llm_fallback(settings, result, runner)
     try:
         write_rca_bundle(result, settings.bundles_dir, recon_id, combined=False)
+        clear_view_cache(recon_id)  # a re-run changed the bundles → refresh Migration Health / Recon runs
     except Exception as exc:  # dashboard can still read live; log and continue
         print(f"[rca] local bundle write failed for {recon_id}: {exc}")
     notebook_path, publish_error = None, None
@@ -762,7 +1038,6 @@ def _run_recon_via_skill(settings: Settings, token: str, payload: dict[str, Any]
     surfaces the recon_id + dashboard + notebook link when it finishes."""
     from .skill_job import run_skill_job
 
-    started = _RECON_JOBS.get(token, {}).get("started") or time.time()
     tables = payload.get("tables", [])
 
     def _status(msg: str) -> None:
@@ -795,6 +1070,42 @@ def _run_recon(settings: Settings, token: str, payload: dict[str, Any]) -> None:
 
     try:
         catalog = settings.recon_catalog
+        started = _RECON_JOBS.get(token, {}).get("started") or time.time()
+
+        # Highest-precedence path: run the REAL Lakebridge reconcile job, then RCA the result.
+        # (Lakebridge reads its own .lakebridge recon config for which tables to compare, so
+        # the UI's source/target picker isn't required here.)
+        from .lakebridge_job import lakebridge_recon_ready, run_lakebridge_reconcile
+        if lakebridge_recon_ready(settings):
+            _set(phase="reconciling", message="Triggering the real Lakebridge reconcile job…")
+            op = "aggregates-reconcile" if payload.get("aggregates") else "reconcile"
+            res = run_lakebridge_reconcile(settings, operation_name=op, say=lambda m: _set(message=m))
+            if res.get("state") != "ok" or not res.get("recon_id"):
+                _set(state="error", phase="reconciling", run_page_url=res.get("run_page_url"),
+                     message=res.get("message", "Lakebridge reconcile failed."), finished=time.time())
+                return
+            recon_id = res["recon_id"]
+            log_audit(_runner(settings), settings.audit_table, operation="reconcile", status="ok",
+                      tool="app", run_id=token, run_by=_audit_user(), catalog=catalog,
+                      recon_id=recon_id, started_ts=started, message="Lakebridge reconcile complete.")
+            dashboard = f"/runs/{recon_id}"
+            _set(phase="analyzing", recon_id=recon_id, dashboard=dashboard,
+                 run_page_url=res.get("run_page_url"),
+                 message="Lakebridge reconcile complete. Running RCA…")
+            try:
+                status = _analyze_publish(settings, recon_id, drilldown=bool(payload.get("drilldown", True)),
+                                          notebook_dir=payload.get("notebook_dir"), run_id=token,
+                                          tool="app", started=started)
+                _set(state="done", phase="done", recon_id=recon_id, dashboard=dashboard,
+                     run_page_url=res.get("run_page_url"), notebook_path=status.get("notebook_path"),
+                     notebook_url=status.get("notebook_url"), tables=status.get("tables"),
+                     findings=status.get("findings"), finished=time.time(),
+                     message=f"Done via real Lakebridge reconcile + RCA. {status.get('message', '')}")
+            except Exception as exc:
+                _set(state="done", phase="done", recon_id=recon_id, dashboard=dashboard,
+                     finished=time.time(), message=f"Lakebridge reconcile complete; RCA failed: {exc}")
+            return
+
         src_schema = (payload.get("source_schema") or settings.source_schema or "").strip()
         tgt_schema = (payload.get("target_schema") or settings.target_schema or "").strip()
         if not src_schema or not tgt_schema:
@@ -803,7 +1114,7 @@ def _run_recon(settings: Settings, token: str, payload: dict[str, Any]) -> None:
             return
 
         # Preferred path: hand the whole reconcile + RCA to the Genie Code skill as a job.
-        from .skill_job import run_skill_job, skill_job_ready
+        from .skill_job import skill_job_ready
 
         if skill_job_ready(settings):
             _run_recon_via_skill(settings, token, payload, src_schema, tgt_schema, _set)
@@ -828,12 +1139,23 @@ def _run_recon(settings: Settings, token: str, payload: dict[str, Any]) -> None:
                                                  f"({pair.status})"}
 
         started = _RECON_JOBS.get(token, {}).get("started") or time.time()
+        # External source (optional, untested — no sandbox): resolve a federated foreign
+        # catalog for a non-Databricks EDW from the UC connection config. Degrades to the
+        # local catalog when unset, so the Databricks→Databricks path is unchanged.
+        src_catalog = ""
+        if settings.source_catalog or settings.source_connection:
+            from rca_engine.connections import SourceConnection, resolve_source_catalog
+
+            conn = SourceConnection(catalog=settings.source_catalog, connection=settings.source_connection)
+            src_catalog = resolve_source_catalog(conn, catalog, runner=_runner(settings))
         result = run_reconcile(
             _runner(settings), catalog, src_schema, tgt_schema, specs,
             recon_schema=settings.recon_schema,
             sample_limit=int(payload.get("sample_limit", 100)),
             max_key_tries=int(payload.get("max_key_tries", 8)),
             progress=_progress,
+            source_catalog=src_catalog,
+            source_type=settings.dialect if src_catalog else "databricks",
         )
         summary = result.to_dict()
         ok = summary["pairs_ok"]
@@ -882,7 +1204,7 @@ def _run_recon(settings: Settings, token: str, payload: dict[str, Any]) -> None:
 
 def build_view(result: RcaResult) -> dict[str, Any]:
     findings = sorted(result.findings, key=severity_score, reverse=True)
-    fviews = [_finding_view(f) for f in findings]
+    fviews = [_finding_view(f, result.dialect) for f in findings]
 
     tables = []
     by_target = {}
@@ -896,28 +1218,50 @@ def build_view(result: RcaResult) -> dict[str, Any]:
             if f.top_hypothesis:
                 vcount[f.top_hypothesis.verdict.value] = vcount.get(f.top_hypothesis.verdict.value, 0) + 1
         worst = max((severity_score(f) for f in fs), default=-1)
+        # Derive missing/extra from the row COUNTS as well, so a recon that under-reports
+        # row-comparison metrics (e.g. target has more rows but missing_in_source=0) can't
+        # display as "clean". Never under-count: take the max of reported vs. the count delta.
+        src, tgt = s.source_count, s.target_count
+        extra = max(s.missing_in_source, tgt - src if tgt > src else 0)      # rows only in target
+        missing = max(s.missing_in_target, src - tgt if src > tgt else 0)    # rows only in source
+        common = max(src - missing, 0)                                       # rows present on BOTH sides
+        total_distinct = common + missing + extra                            # all distinct rows across both
+        # row_match = records present on BOTH sides / all distinct records — so BOTH missing
+        # AND extra rows lower it (e.g. src 100,000 vs tgt 100,500 → 99.5%, not 100%).
+        row_match = round(100.0 * common / total_distinct, 2) if total_distinct > 0 else 100.0
+        col_match = round(100.0 * max(common - s.absolute_mismatch, 0) / common, 2) if common > 0 else 100.0
+        clean = (missing == 0 and extra == 0 and s.absolute_mismatch == 0 and s.schema_ok)
+        # The specific columns that differ (the "column details") — union of the mismatch_columns
+        # metric and the columns named by this table's findings. This replaces a raw match %:
+        # it says exactly WHICH columns are off, not a scary "0% of rows fully match".
+        diff_cols = sorted({c for c in (s.mismatch_columns or []) if c}
+                           | {f.column for f in fs if f.column})
         tables.append({
             "name": name,
             "source_table": s.source_table,
             "target_table": s.target_table,
-            "source_count": s.source_count,
-            "target_count": s.target_count,
-            "missing_in_target": s.missing_in_target,
-            "missing_in_source": s.missing_in_source,
+            "source_count": src,
+            "target_count": tgt,
+            "missing_in_target": missing,
+            "missing_in_source": extra,
             "absolute_mismatch": s.absolute_mismatch,
-            "row_match_pct": s.row_match_pct,
+            "row_match_pct": row_match,
+            "col_match_pct": col_match,
+            "diff_columns": diff_cols,
             "schema_ok": s.schema_ok,
             "findings_count": len(fs),
             "verdicts": vcount,
             "max_severity": (severity_label(max(fs, key=severity_score)) if fs else None),
             "max_severity_score": worst,
-            "clean": len(fs) == 0,
+            "clean": clean and len(fs) == 0,
         })
     tables.sort(key=lambda t: t["max_severity_score"], reverse=True)
 
-    total_src = sum(s.source_count for s in result.table_summaries)
-    matched = sum(s.matched_rows for s in result.table_summaries)
-    overall_row_match = round(100.0 * matched / total_src, 2) if total_src else 100.0
+    total_common = sum(max(t["source_count"] - t["missing_in_target"], 0) for t in tables)
+    total_distinct = sum(t["source_count"] + t["missing_in_source"] for t in tables)  # + extra rows
+    total_mm = sum(t["absolute_mismatch"] for t in tables)
+    overall_row_match = round(100.0 * total_common / total_distinct, 2) if total_distinct else 100.0
+    overall_col_match = round(100.0 * max(total_common - total_mm, 0) / total_common, 2) if total_common else 100.0
 
     top = [fv for fv in fviews if fv["verdict"] != "benign"][:5]
 
@@ -927,6 +1271,8 @@ def build_view(result: RcaResult) -> dict[str, Any]:
         "verdict_counts": result.verdict_counts(),
         "verdict_meta": _VERDICT_META,
         "overall_row_match_pct": overall_row_match,
+        "overall_col_match_pct": overall_col_match,
+        "columns_changed": len({(t["name"], c) for t in tables for c in t["diff_columns"]}),
         "table_pairs": len(result.table_summaries),
         "findings_total": len(result.findings),
         "top_priorities": top,

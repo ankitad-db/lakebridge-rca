@@ -19,7 +19,7 @@ from rca_engine.severity import severity_badge, severity_score
 _VERDICT = {
     Verdict.MIGRATION_INDUCED: ("🔧", "Migration-induced", "Fix in the migration"),
     Verdict.GENUINE_DATA: ("📊", "Genuine data difference", "Route to the data owner"),
-    Verdict.BENIGN: ("✅", "Benign / expected", "No action"),
+    Verdict.BENIGN: ("✅", "Expected — no action", "No action"),
     Verdict.NEEDS_REVIEW: ("🔍", "Needs review", "Investigate further"),
 }
 
@@ -344,7 +344,7 @@ def build_conclusion(result: RcaResult) -> str:
         lines += ["", f"## 🔍 Needs review — {len(review)}"]
         lines += _rows(Verdict.NEEDS_REVIEW)
 
-    lines += ["", f"## ✅ Benign / expected — {len(benign)}",
+    lines += ["", f"## ✅ Expected — no action — {len(benign)}",
               f"- {len(benign)} finding(s) are representation-only or within tolerance; no action."]
 
     lines += ["", "> If re-running a cell changes an output, update that finding's verdict "

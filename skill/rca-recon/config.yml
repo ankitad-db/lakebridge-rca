@@ -1,7 +1,40 @@
 # Configuration for the rca-recon skill. The user supplies only the recon_id;
 # everything else is read from here.
 
-# Where Lakebridge reconcile writes its output tables (main/metrics/details).
+# Which VALIDATION TOOL produced the output we analyze. This RCA is validation-tool
+# agnostic: it runs the same deterministic + query-gated engine on any supported tool's
+# results. Supported:
+#   lakebridge (default) — Lakebridge reconcile main/metrics/details (keyed by recon_id)
+#   avf                  — Auto Validation Framework avf_* report tables (keyed by run_id)
+# The `recon_id` the user supplies is interpreted as that tool's run identity (recon_id for
+# lakebridge, run_id for AVF). Switching tools changes ONLY ingest; classify / drill-down /
+# fixes / notebook are identical.
+validation_tool: lakebridge
+
+# AVF options (used only when validation_tool: avf). The engine reads these tables from
+# `reports_schema` for the given run_id: avf_validation_summary / _columns_mismatch /
+# _rows_mismatch / _schema_mismatch, and (as EVIDENCE, not a verdict) avf_validation_rca.
+avf:
+  # catalog.schema holding the avf_* tables; defaults to recon_catalog.recon_schema below.
+  reports_schema: ""
+  # Leave blank to AUTO-DETECT the source dialect from avf_validation_summary.source_dialect
+  # (so the right knowledge base loads per run); set to force a specific dialect.
+  dialect: ""
+  # Fold AVF's own row-count lineage RCA (FILTER_LOSS/JOIN_LOSS/…) in as corroborating
+  # evidence on our volume findings. Our classifier still decides migration-vs-genuine.
+  consume_rca: true
+
+# Analysis depth (tool-agnostic), per the Agentic_RCA spec. Layers on the agentic gate:
+#   deterministic — rules + deterministic probes only; no LLM. Fast, fully reproducible (CI).
+#   hybrid        — deterministic first; LLM resolves only residual findings, promoted ONLY
+#                   if its confirming query passes. Highest coverage without losing trust.
+#   agent         — LLM leads the residual investigation, still query-gated.
+# In every mode the executed query is the gate — the LLM never assigns a verdict on its own.
+# Leave blank to defer to the legacy `llm_synthesis` switch below (back-compat).
+rca_mode: hybrid
+
+# Where Lakebridge reconcile writes its output tables (main/metrics/details). Also the
+# default location of the AVF report tables when avf.reports_schema is blank.
 recon_catalog: fevm_ps_dr_us_east_2_catalog
 recon_schema: reconcile
 
@@ -84,11 +117,43 @@ combined_notebook: false
 #     join_keys: [order_id]               # optional override
 #     date_column: order_ts               # optional override
 
-# Code-aware artifact (migrated Databricks SQL) for the transformation-logic highlight and
-# the agentic reconstruction. Point this at your migration's transpiled/target SQL folder.
-# (Default here = the hybrid retail demo bed.) Override per run with the transpiled_output_dir
-# argument to run() when analyzing a different migration.
+# Code-aware TARGET transform logic + script location. PRIMARY source is trace_job below
+# (auto-discovers the building job's SQL from system.access.table_lineage — no scripts to
+# pass). This transpiled_output_dir is the OPTIONAL FALLBACK used when no building job is
+# found (e.g. tables built by an ad-hoc CTAS). The SOURCE side needs no script: its values
+# come from the recon details and its declared types from schema_details (source_datatype);
+# source_scripts_dir is an optional enrichment only. Default here = the hybrid retail demo bed.
 transpiled_output_dir: /Workspace/Users/ankita.darekar@databricks.com/.assistant/skills/rca-recon/demo_artifacts/hybrid
+
+# Scripts in Git (e.g. GitHub) instead of a workspace folder. Common migration layout:
+# the ORIGINAL source-dialect SQL (e.g. Teradata) lives in one repo, the transpiled
+# Databricks SQL in another. Each *_git block is CLONED at run time and OVERRIDES its
+# *_dir fallback above; a clone failure just falls back (RCA still runs data-only). Note:
+# reconciling Databricks<->Databricks (source data loaded from Teradata into Databricks)
+# is independent of this — keep `dialect: teradata` so the RCA uses the Teradata knowledge
+# base and parses the source scripts as Teradata, regardless of whether reconcile read the
+# live Teradata source or the Databricks copy.
+#   repo         (required) https or ssh clone URL
+#   ref          (optional) branch / tag / commit SHA — default: repo HEAD
+#   path         (optional) subdirectory within the repo — default: repo root
+#   token        (optional) PAT for a private https repo — prefer token_secret
+#   token_secret (optional) {scope, key} to read the PAT from a Databricks secret scope
+# transpiled_output_git:            # migrated Databricks SQL (the TARGET transforms)
+#   repo: https://github.com/org/databricks-target-sql.git
+#   ref: main
+#   path: transpiled
+# source_scripts_git:               # original source-dialect DDL (declared source types)
+#   repo: https://github.com/org/teradata-source-sql.git
+#   ref: main
+#   path: ddl
+#   token_secret: {scope: mig, key: github_token}
+# source_transpiled_git:            # original source build SQL (derivations) for the
+#   repo: https://github.com/org/teradata-source-sql.git   # side-by-side "source logic vs
+#   ref: main                                              #  migrated logic" view
+#   path: transforms
+# Workspace-folder equivalents of the two source slots (used when *_git is not set):
+# source_scripts_dir: /Workspace/Repos/<you>/teradata-source-sql/ddl
+# source_transpiled_dir: /Workspace/Repos/<you>/teradata-source-sql/transforms
 
 # Agentic (LLM) vs deterministic is a per-run CHOICE, defaulted here:
 #   llm_synthesis  drives the interactive Genie agentic tier (agent proposes + query-confirms);
@@ -125,7 +190,7 @@ max_lineage_hops: 10
 # that recomputes the value from source for the sampled row. Complements use_uc_lineage
 # (UC metadata) with the actual SQL-derived "why". Needs the Databricks SDK + workspace
 # access; degrades gracefully to nothing if unavailable. Off by default.
-trace_job: false
+trace_job: true
 
 # Pin the building job (id or name) for trace_job when system-table discovery isn't
 # available; leave blank to auto-discover from lineage.

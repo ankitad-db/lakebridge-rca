@@ -185,9 +185,22 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
     # A per-run `transpiled_output_dir` argument overrides the config (lets one deployed
     # skill point at different migrated-SQL artifacts per recon run).
     t_out = transpiled_output_dir or cfg.get("transpiled_output_dir")
+    # Scripts can live in Git repos (e.g. a Teradata-source repo + a transpiled-target repo).
+    # Each *_git spec is cloned to a local dir and OVERRIDES its *_dir fallback. Best-effort:
+    # a clone failure leaves the *_dir value (or None) so RCA still runs data-only.
+    src_dir = cfg.get("source_scripts_dir")
+    src_transpiled_dir = cfg.get("source_transpiled_dir")
+    if any(cfg.get(k) for k in ("transpiled_output_git", "source_scripts_git", "source_transpiled_git")):
+        try:
+            from rca_engine.gitsource import resolve_git_dir
+            t_out = resolve_git_dir(cfg.get("transpiled_output_git")) or t_out
+            src_dir = resolve_git_dir(cfg.get("source_scripts_git")) or src_dir
+            src_transpiled_dir = resolve_git_dir(cfg.get("source_transpiled_git")) or src_transpiled_dir
+        except Exception as exc:
+            print(f"[gitsource] resolve skipped: {str(exc)[:160]}")
     mapping = None
-    if t_out or any(cfg.get(k) for k in ("recon_config_path",
-                                         "transpile_error_file", "source_scripts_dir", "tables")):
+    if t_out or src_dir or src_transpiled_dir or any(cfg.get(k) for k in (
+            "recon_config_path", "transpile_error_file", "tables")):
         # The code-aware mapping parses migrated SQL with sqlglot. Ensure it's importable
         # BEFORE rca_engine.lakebridge is first imported here (its sqlglot availability is
         # bound at import time). A missing sqlglot only costs the 🔧 Transformation-logic
@@ -209,9 +222,10 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
             cfg.get("recon_config_path"),
             t_out,
             cfg.get("transpile_error_file"),
-            source_scripts=cfg.get("source_scripts_dir"),
+            source_scripts=src_dir,
             source_dialect=cfg.get("dialect", "snowflake"),
             table_manifest=cfg.get("tables"),
+            source_transpiled=src_transpiled_dir,
         )
 
     runner = SparkQueryRunner(spark)
@@ -238,9 +252,25 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
         from rca_engine.memory import load_memory
         memory = load_memory(runner, mem_table, dialect=dialect)
 
+    # Validation-tool-agnostic ingest: `validation_tool` selects whose OUTPUT we analyze.
+    # Default "lakebridge" leaves the source None so analyze() builds its unchanged
+    # LakebridgeSource from (recon_id, recon_catalog, recon_schema). "avf" reads the AVF
+    # report tables for this run_id (recon_id doubles as the AVF run_id); the dialect is
+    # auto-detected from avf_validation_summary.source_dialect unless avf.dialect is set.
+    tool = str(cfg.get("validation_tool", "lakebridge")).lower()
+    source = None
+    if tool == "avf":
+        from rca_engine.sources import AVFSource
+        avf = cfg.get("avf") or {}
+        reports_schema = avf.get("reports_schema") or f'{cfg["recon_catalog"]}.{cfg["recon_schema"]}'
+        source = AVFSource(run_id=recon_id, reports_schema=reports_schema,
+                           dialect=avf.get("dialect"),
+                           consume_rca=bool(avf.get("consume_rca", True)))
+
     result = analyze(
         runner, recon_id, cfg["recon_catalog"], cfg["recon_schema"],
         dialect=cfg.get("dialect", "snowflake"), drilldown=True, mapping=mapping,
+        source=source,
         use_lineage=use_lineage,
         # Depth of the upstream lineage trace-back (walks to the root layer).
         max_lineage_hops=int(cfg.get("max_lineage_hops", 10)),
@@ -274,14 +304,24 @@ def run(recon_id: str, spark: Any, out_dir: str | None = None, _run_id: str | No
     # NOT engage the tier (it stays set as the headless/App target) — the run is agentic only
     # when llm_synthesis is true. An explicit `llm_endpoint` ARG still overrides (a headless job
     # opting in with an endpoint, or opting out with ""), so callers keep full control.
-    llm_on = bool(cfg.get("llm_synthesis", False))
+    # `rca_mode` (deterministic | hybrid | agent) is the tool-agnostic analysis-depth control
+    # from the spec, layered on the agentic gate. deterministic = no LLM; hybrid/agent engage
+    # the query-gated Tier-2 fallback. When rca_mode is unset, fall back to the legacy
+    # `llm_synthesis` switch so existing configs behave exactly as before.
+    mode = str(cfg.get("rca_mode", "")).lower()
+    if mode == "deterministic":
+        llm_on = False
+    elif mode in ("hybrid", "agent"):
+        llm_on = True
+    else:
+        llm_on = bool(cfg.get("llm_synthesis", False))
     endpoint = llm_endpoint if llm_endpoint is not None else ((cfg.get("llm_endpoint") or "") if llm_on else "")
     if endpoint:
         try:
             from rca_engine.llm_fallback import run_llm_fallback
             promoted = run_llm_fallback(
                 result, runner, str(endpoint),
-                dialect=cfg.get("dialect", "snowflake"), mapping=mapping,
+                dialect=result.dialect, mapping=mapping,   # tool-aware: AVF auto-detects the dialect
                 max_findings=int(cfg.get("llm_max_findings", 25)),
             )
             if promoted:

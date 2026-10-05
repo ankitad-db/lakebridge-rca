@@ -38,6 +38,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recon-catalog", required=True)
     parser.add_argument("--recon-schema", required=True)
     parser.add_argument("--dialect", default="snowflake")
+    parser.add_argument("--validation-tool", default="lakebridge", choices=["lakebridge", "avf"],
+                        help="Which validation tool's output to analyze. 'avf' reads the avf_* "
+                             "report tables for --recon-id (the AVF run_id); dialect is "
+                             "auto-detected unless --dialect is given.")
+    parser.add_argument("--avf-reports-schema", default=None,
+                        help="catalog.schema holding the avf_* tables (AVF only; "
+                             "default: --recon-catalog.--recon-schema).")
     parser.add_argument("--output-dir", default="rca_output",
                         help="Base directory; a self-contained rca_<recon_id>/ folder is created "
                              "inside it (index + per-table notebooks + findings JSON).")
@@ -106,11 +113,20 @@ def main(argv: list[str] | None = None) -> int:
                                 source_scripts=args.source_scripts, source_dialect=args.dialect,
                                 table_manifest=manifest)
 
+    # Validation-tool-agnostic ingest: 'avf' reads the avf_* report tables for the run_id;
+    # default 'lakebridge' leaves source None so analyze() uses the unchanged recon path.
+    source = None
+    if args.validation_tool == "avf":
+        from rca_engine.sources import AVFSource
+        rs = args.avf_reports_schema or f"{args.recon_catalog}.{args.recon_schema}"
+        source = AVFSource(run_id=args.recon_id, reports_schema=rs)
+
     result = analyze(
         runner, args.recon_id, args.recon_catalog, args.recon_schema,
         dialect=args.dialect, drilldown=not args.no_drilldown, mapping=mapping,
         use_lineage=args.use_lineage, max_lineage_hops=args.max_lineage_hops,
         trace_job=args.trace_job, job_id=args.job_id, profile=args.profile,
+        source=source,
     )
 
     # Optional Tier-2 LLM fallback on residual findings (still query-gated). Runs before
@@ -118,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.endpoint:
         from rca_engine.llm_fallback import run_llm_fallback
         promoted = run_llm_fallback(
-            result, runner, args.endpoint, dialect=args.dialect, mapping=mapping,
+            result, runner, args.endpoint, dialect=result.dialect, mapping=mapping,
             profile=args.profile, max_findings=args.max_llm_findings,
         )
         print(f"[llm] promoted {promoted} residual finding(s) via the confirming-query gate.")

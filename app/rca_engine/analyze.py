@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from rca_engine.classify import classify_all
 from rca_engine.drilldown import run_drilldown
-from rca_engine.ingest import QueryRunner, ingest_with_summaries
+from rca_engine.ingest import QueryRunner
 from rca_engine.models import RcaResult
 from rca_engine.scan import ScanScope
+from rca_engine.sources import LakebridgeSource, ValidationSource
 
 
 def _apply_mapping(summaries, mapping: dict) -> None:
@@ -47,8 +48,16 @@ def analyze(
     validate_fixes: bool = True,
     memory: dict | None = None,
     scope: ScanScope | None = None,
+    source: ValidationSource | None = None,
 ) -> RcaResult:
     """Run the end-to-end RCA for a recon run.
+
+    ``source`` selects the validation tool whose output is analyzed. Leave it ``None``
+    (the default) and the positional ``recon_id`` / ``recon_catalog`` / ``recon_schema``
+    drive a :class:`rca_engine.sources.LakebridgeSource` — i.e. the Lakebridge path is
+    exactly as before. Pass an :class:`rca_engine.sources.AVFSource` (or any
+    ``ValidationSource``) to analyze a different tool's output through the same engine; a
+    source may also carry a detected ``dialect`` that overrides the ``dialect`` argument.
 
     ``only_table`` scopes the analysis to a single table pair (one-table-at-a-time);
     leave ``None`` to analyze the whole run.
@@ -86,15 +95,19 @@ def analyze(
       unbounded scans.
     """
 
-    findings, summaries = ingest_with_summaries(
-        runner, recon_id, recon_catalog, recon_schema, only_table=only_table
-    )
+    if source is None:
+        source = LakebridgeSource(recon_id, recon_catalog, recon_schema)
+    findings, summaries = source.load(runner, only_table=only_table)
+    # A tool that reports its own source dialect (e.g. AVF) overrides the default so the
+    # right knowledge base loads; Lakebridge leaves this None and the dialect arg wins.
+    eff_dialect = source.dialect or dialect
+    run_id = source.label or recon_id
     if mapping:
         _apply_mapping(summaries, mapping)
-    findings = classify_all(findings, dialect=dialect, mapping=mapping)
+    findings = classify_all(findings, dialect=eff_dialect, mapping=mapping)
     if memory:
         from rca_engine.memory import apply_memory
-        findings = apply_memory(findings, memory, dialect)
+        findings = apply_memory(findings, memory, eff_dialect)
     if drilldown:
         findings = run_drilldown(findings, runner, scope)
     if drift:
@@ -118,14 +131,14 @@ def analyze(
             from rca_engine.fixgen import validate_all_fixes
             validate_all_fixes(findings, runner)
 
-    # Aggregate-reconcile RCA (feature #13): if this recon_id is an aggregates-reconcile
-    # run, ingest its per-rule aggregate mismatches (SUM/AVG/COUNT/... by group) and append
-    # them. Best-effort — never breaks the row-level RCA.
-    if runner is not None:
+    # Aggregate-reconcile RCA (feature #13): if the source supports it (Lakebridge
+    # aggregates-reconcile), ingest its per-rule aggregate mismatches (SUM/AVG/COUNT/... by
+    # group) and append them. Best-effort — never breaks the row-level RCA, and sources
+    # that don't produce aggregates (AVF) simply return none.
+    if runner is not None and source.supports_aggregates:
         try:
-            from rca_engine.aggregate_rca import run_aggregate_rca
             from rca_engine.models import TableSummary
-            agg = run_aggregate_rca(runner, recon_id, recon_catalog, recon_schema)
+            agg = source.aggregate_findings(runner)
             if agg:
                 findings = list(findings) + agg
                 have = {s.target_table for s in summaries}
@@ -137,7 +150,14 @@ def analyze(
         except Exception:
             pass
 
+    # Tool-specific post-classify enrichment (e.g. AVF's own row-count RCA attached as
+    # evidence on volume findings). No-op for Lakebridge.
+    try:
+        source.post_classify(findings, runner)
+    except Exception:
+        pass
+
     from rca_engine.cluster import build_clusters
     clusters = build_clusters(findings)
-    return RcaResult(recon_id=recon_id, dialect=dialect, findings=findings,
+    return RcaResult(recon_id=run_id, dialect=eff_dialect, findings=findings,
                      table_summaries=summaries, clusters=clusters)

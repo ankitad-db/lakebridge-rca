@@ -261,8 +261,18 @@ footer .wrap{padding-block:28px;display:flex;justify-content:space-between;flex-
         <span class="farrow">→</span>
         <div class="fbox out"><div class="ft">ReconResolve RCA</div><div class="fs">notebook · verdicts · fixes</div></div>
       </div>
-      <div class="branch">RCA reads: <b>reconcile metadata</b> (main · metrics · details · schema_details · aggregate_*) + <b>migrated SQL artifact</b> (🔧 transform + 📄 script location + ⚠️ culprit) + <b>UC lineage</b> (system.access.*) + optional <b>FM endpoint</b> (hybrid). Writes an append-only <b>audit table</b> per run.</div>
+      <div class="branch">RCA reads: <b>reconcile metadata</b> (main · metrics · details · aggregate_rules · aggregate_metrics) + <b>migrated SQL artifact</b> (🔧 transform + 📄 script location + ⚠️ culprit) + <b>UC lineage</b> (system.access.*) + optional <b>FM endpoint</b> (hybrid). Writes an append-only <b>audit table</b> per run.</div>
     </div>
+    <table class="matrix" style="margin-top:24px">
+      <thead><tr><th>Lakebridge recon table</th><th>What ReconResolve pulls from it</th></tr></thead>
+      <tbody>
+        <tr><th>main</th><td>Run identity — recon_id, source/target table names, report type</td></tr>
+        <tr><th>metrics</th><td>True totals, pass/fail status, error message, which columns mismatched</td></tr>
+        <tr><th>details</th><td>Sampled mismatch records — the example source vs. target values</td></tr>
+        <tr><th>aggregate_rules</th><td>Per-rule aggregate definitions (aggregates-reconcile runs)</td></tr>
+        <tr><th>aggregate_metrics</th><td>Aggregate mismatch counts (SUM / AVG / COUNT …)</td></tr>
+      </tbody>
+    </table>
   </div>
 </section>
 

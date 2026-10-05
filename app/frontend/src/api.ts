@@ -2,6 +2,7 @@ import type {
   AppConfig,
   AuditRow,
   JobStatus,
+  Portfolio,
   ReconJob,
   ReconRun,
   RunView,
@@ -101,4 +102,5 @@ export const api = {
   reconJob: (token: string) => get<ReconJob>(`/api/recon/job/${encodeURIComponent(token)}`),
   audit: (limit = 50) =>
     get<{ audit_table: string; rows: AuditRow[] }>(`/api/audit?limit=${limit}`),
+  portfolio: () => get<Portfolio>("/api/portfolio"),
 };
